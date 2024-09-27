@@ -3,7 +3,8 @@ import logging
 
 import requests
 
-from messaging.telegram_messenger import TelegramMessenger, read_telegram_config
+from utils.config import read_telegram_config
+from messaging.telegram_messenger import TelegramMessenger
 
 # Configure logging
 logging.basicConfig(
