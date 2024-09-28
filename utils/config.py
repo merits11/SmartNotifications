@@ -5,7 +5,7 @@ from typing import Dict
 
 def read_telegram_config():
     # Build the path to the file using the HOME environment variable
-    config_path = Path(os.getenv("HOME")) / ".telegram" / "chat-utils"
+    config_path = Path(os.getenv("HOME")) / ".telegram" / "chat-config"
 
     # Dictionary to store the token and chat_id
     config = read_config(config_path)
