@@ -1,12 +1,13 @@
-import argparse
 import logging
-import os.path
 import subprocess
 from os import environ
 from pathlib import Path
 
+import click
+
 from llm.client import get_llm_client
 from llm.prompts import build_command_find_prompt
+from utils.input import user_input
 
 logging.basicConfig(
     level=logging.INFO,
@@ -15,22 +16,22 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
-def main():
-    # Create the parser
-    parser = argparse.ArgumentParser(description="CLI tool for processing input strings.")
-    # Add an argument for the action
-    parser.add_argument('--action', type=str, help='Use natural language to describe what you want to do')
-    repo_dir = Path(__file__).resolve().parent
-    default_kb = os.path.join(repo_dir, 'knowledge/private_kb.md')
-    parser.add_argument('--kb', type=str, default=default_kb, help='Knowledge base file path')
+@click.group()
+def cli():
+    pass
 
-    # Parse the arguments
-    args = parser.parse_args()
 
-    # Implement your logic based on the action argument
-    if not args.action:
-        args.action = input("What shall I run, your highness? 🧐")
-    process_action(args)
+@cli.command()
+@click.option('-i', '--instruction', type=str, help='Use natural language to describe what you want to do')
+@click.argument('extra_args', nargs=-1)
+@click.option('--kb', type=str, default=lambda: str(Path(__file__).resolve().parent / 'knowledge/private_kb.md'),
+              help='Knowledge base file path')
+def run(instruction, extra_args, kb):
+    if not instruction:
+        instruction = user_input("What shall I run, your highness? 🧐")
+    while instruction != '/q':
+        process_action(instruction, extra_args, kb)
+        instruction = user_input("What else do you need? /q to quit:")
 
 
 def sanitize_command(content: str) -> str:
@@ -50,21 +51,25 @@ def get_shell_and_rc():
     raise ValueError(f'Not yet implemented for shell {shell}')
 
 
-def process_action(args):
-    action = args.action
+def process_action(action, extra_args, kb):
     client = get_llm_client()
-    kb = Path(args.kb).read_text()
-    system_prompt = build_command_find_prompt(kb)
-    response = client.get_chat_completion(
-        [{"role": "system", "content": system_prompt},
-         {"role": "user", "content": f"Here is the user input: {action}"}, ])
+    kb_content = Path(kb).read_text()
+    system_prompt = build_command_find_prompt(kb_content)
+    chat_messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f"Here is the user input: {action}"}
+    ]
+    if extra_args:
+        chat_messages.append({"role": "user", "content": f"Here are the file arguments to the command: {extra_args}"})
+    response = client.get_chat_completion(chat_messages)
     content = response.choices[0].message.content
     command_from_llm = sanitize_command(content)
     shell, rc = get_shell_and_rc()
-    input(f"Running: `{command_from_llm}` with {shell}?")
-    final_command = f'source {rc} && {command_from_llm}'
-    subprocess.run(final_command, shell=True, check=True, executable=shell)
+    edited_command = user_input(f"Running command with {shell}?\n", default=command_from_llm)
+    final_command = f'source {rc} && {edited_command}'
+    result = subprocess.run(final_command, shell=True, executable=shell)
+    logging.info(f"Command returned status {result.returncode}")
 
 
 if __name__ == "__main__":
-    main()
+    cli()

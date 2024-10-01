@@ -9,7 +9,9 @@ readme = "README.md"
 python = ">=3.8"
 python-telegram-bot = "^21.6"
 requests = "^2.32.3"
-openai = "^1.50.1"
+openai = "^1.50.2"
+click = "^8.1.7"
+prompt-toolkit = "^3.0.48"
 
 
 [build-system]
