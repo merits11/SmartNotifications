@@ -1,12 +1,13 @@
 import logging
 import subprocess
+import webbrowser
 from os import environ
 from pathlib import Path
 
 import click
 
 from llm.client import get_llm_client
-from llm.prompts import build_command_find_prompt
+from llm.prompts import build_command_generation_prompt, build_emoji_generation_prompt, build_link_generation_prompt
 from utils.input import user_input
 
 logging.basicConfig(
@@ -28,13 +29,31 @@ def cli():
               help='Knowledge base file path')
 def run(instruction, extra_args, kb):
     if not instruction:
-        instruction = user_input("What shall I run, your highness? 🧐")
+        instruction = user_input("🧐What shall I run, your highness:")
     while instruction != '/q':
-        process_action(instruction, extra_args, kb)
+        run_action(instruction, extra_args, kb)
         instruction = user_input("What else do you need? /q to quit:")
 
 
-def sanitize_command(content: str) -> str:
+@cli.command()
+@click.option('-i', '--instruction', type=str, help='Use natural language to describe what you want to do')
+@click.option('--kb', type=str, default=lambda: str(Path(__file__).resolve().parent / 'knowledge/private_ddlol.md'),
+              help='Knowledge base file path')
+def goto(instruction, kb):
+    if not instruction:
+        instruction = user_input("🧐Describe your link:")
+    goto_link(instruction, kb)
+
+
+@cli.command()
+@click.option('-i', '--instruction', type=str, help='Use natural language to describe what you want to do')
+def emoji(instruction):
+    if not instruction:
+        instruction = user_input("Describe your emoji:")
+    get_emoji(instruction)
+
+
+def sanitize_shell_command(content: str) -> str:
     lines = content.split('\n')
     if len(lines) == 1:
         return content
@@ -51,24 +70,50 @@ def get_shell_and_rc():
     raise ValueError(f'Not yet implemented for shell {shell}')
 
 
-def process_action(action, extra_args, kb):
-    client = get_llm_client()
+def get_emoji(instruction):
+    system_prompt = build_emoji_generation_prompt()
+    chat_messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f"Here is the user input: {instruction}"}
+    ]
+    content = run_llm(chat_messages)
+    print(f"Here is your emoji: {content}")
+
+
+def goto_link(instruction, kb):
     kb_content = Path(kb).read_text()
-    system_prompt = build_command_find_prompt(kb_content)
+    system_prompt = build_link_generation_prompt(kb_content)
+    chat_messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f"Here is the user input: {instruction}"}
+    ]
+    link = run_llm(chat_messages)
+    print(f"Opening link {link}")
+    webbrowser.open(link)
+
+
+def run_action(action, extra_args, kb):
+    kb_content = Path(kb).read_text()
+    system_prompt = build_command_generation_prompt(kb_content)
     chat_messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": f"Here is the user input: {action}"}
     ]
     if extra_args:
         chat_messages.append({"role": "user", "content": f"Here are the file arguments to the command: {extra_args}"})
-    response = client.get_chat_completion(chat_messages)
-    content = response.choices[0].message.content
-    command_from_llm = sanitize_command(content)
+    content = run_llm(chat_messages)
+    command_from_llm = sanitize_shell_command(content)
     shell, rc = get_shell_and_rc()
     edited_command = user_input(f"Running command with {shell}?\n", default=command_from_llm)
     final_command = f'source {rc} && {edited_command}'
     result = subprocess.run(final_command, shell=True, executable=shell)
-    logging.info(f"Command returned status {result.returncode}")
+    print(f"Command returned status {result.returncode}")
+
+
+def run_llm(chat_messages):
+    client = get_llm_client()
+    response = client.get_chat_completion(chat_messages)
+    return response.choices[0].message.content
 
 
 if __name__ == "__main__":
