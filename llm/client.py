@@ -3,15 +3,15 @@ import functools
 from openai import OpenAI
 
 from llm.conversation import Conversation
-from utils.config import read_llm_token
+from utils.config import read_config
 
 DEFAULT_MODEL = "gpt-4o-mini"
 
 
 @functools.lru_cache(maxsize=1)
 def get_openai_client():
-    token = read_llm_token()
-    return OpenAI(api_key=token)
+    config = read_config()
+    return OpenAI(api_key=config.llm_token)
 
 
 @functools.lru_cache(maxsize=1)

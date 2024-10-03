@@ -3,8 +3,8 @@ import logging
 
 import requests
 
-from utils.config import read_telegram_config
 from messaging.telegram_messenger import TelegramMessenger
+from utils.config import read_config
 
 # Configure logging
 logging.basicConfig(
@@ -14,7 +14,8 @@ logging.basicConfig(
 
 
 async def main():
-    token, chat_id, chat_id_2 = read_telegram_config()
+    config = read_config()
+    token, chat_id, chat_id_2 = config.telegram_token, config.chat_id, config.important_chat_id
 
     # Create a TelegramMessenger instance
     telegram_messenger = TelegramMessenger(token=token, chat_id=chat_id, important_chat_id=chat_id_2)
@@ -27,6 +28,7 @@ async def main():
     await telegram_messenger.send_message("Hello from the OOP-based Telegram Messenger!")
 
     await telegram_messenger.send_important_message("Hello from the OOP-based Telegram Messenger!")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
