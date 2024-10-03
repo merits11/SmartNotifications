@@ -1,3 +1,4 @@
+import json
 import logging
 import subprocess
 import webbrowser
@@ -7,6 +8,7 @@ from pathlib import Path
 import click
 
 from llm.client import get_llm_client
+from llm.conversation import Conversation
 from llm.prompts import build_command_generation_prompt, build_emoji_generation_prompt, build_link_generation_prompt
 from utils.input import user_input
 
@@ -30,8 +32,9 @@ def cli():
 def run(instruction, extra_args, kb):
     if not instruction:
         instruction = user_input("🧐What shall I run, your highness:")
+    conversation = Conversation()
     while instruction != '/q':
-        run_action(instruction, extra_args, kb)
+        run_action(instruction, extra_args, kb, conversation)
         instruction = user_input("What else do you need? /q to quit:")
 
 
@@ -42,7 +45,8 @@ def run(instruction, extra_args, kb):
 def goto(instruction, kb):
     if not instruction:
         instruction = user_input("🧐Describe your link:")
-    goto_link(instruction, kb)
+    conversation = Conversation()
+    goto_link(instruction, kb, conversation)
 
 
 @cli.command()
@@ -50,7 +54,8 @@ def goto(instruction, kb):
 def emoji(instruction):
     if not instruction:
         instruction = user_input("Describe your emoji:")
-    get_emoji(instruction)
+    conversation = Conversation()
+    get_emoji(instruction, conversation)
 
 
 def sanitize_shell_command(content: str) -> str:
@@ -70,49 +75,54 @@ def get_shell_and_rc():
     raise ValueError(f'Not yet implemented for shell {shell}')
 
 
-def get_emoji(instruction):
+def get_emoji(instruction, conversation):
     system_prompt = build_emoji_generation_prompt()
-    chat_messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Here is the user input: {instruction}"}
-    ]
-    content = run_llm(chat_messages)
+    conversation.add_system_message(system_prompt)
+    conversation.add_user_message(f"Here is the user input: {instruction}")
+    content = run_llm(conversation)
     print(f"Here is your emoji: {content}")
 
 
-def goto_link(instruction, kb):
+def goto_link(instruction, kb, conversation):
     kb_content = Path(kb).read_text()
     system_prompt = build_link_generation_prompt(kb_content)
-    chat_messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Here is the user input: {instruction}"}
-    ]
-    link = run_llm(chat_messages)
+    conversation.add_system_message(system_prompt)
+    conversation.add_user_message(f"Here is the user input: {instruction}")
+    link = run_llm(conversation)
     print(f"Opening link {link}")
     webbrowser.open(link)
 
 
-def run_action(action, extra_args, kb):
-    kb_content = Path(kb).read_text()
-    system_prompt = build_command_generation_prompt(kb_content)
-    chat_messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Here is the user input: {action}"}
-    ]
-    if extra_args:
-        chat_messages.append({"role": "user", "content": f"Here are the file arguments to the command: {extra_args}"})
-    content = run_llm(chat_messages)
+def run_action(action, extra_args, kb, conversation):
+    if not conversation.messages:
+        kb_content = Path(kb).read_text()
+        system_prompt = build_command_generation_prompt(kb_content)
+        conversation.add_system_message(system_prompt)
+        conversation.add_user_message(f"Here is the user input: {action}")
+        if extra_args:
+            conversation.add_user_message(f"Here are the file arguments user provided: {extra_args}")
+    else:
+        conversation.add_user_message(f"User follows up: {action}")
+    content = run_llm(conversation)
     command_from_llm = sanitize_shell_command(content)
     shell, rc = get_shell_and_rc()
     edited_command = user_input(f"Running command with {shell}?\n", default=command_from_llm)
     final_command = f'source {rc} && {edited_command}'
     result = subprocess.run(final_command, shell=True, executable=shell)
     print(f"Command returned status {result.returncode}")
+    conversation.add_user_message(f"User ran `{edited_command}`, exited with code {result.returncode}")
 
 
-def run_llm(chat_messages):
+def run_llm(conversation):
     client = get_llm_client()
-    response = client.get_chat_completion(chat_messages)
+    response = client.converse(conversation)
+    # Write to JSON file TODO: organize better
+    output_path = '/tmp/smart-conversation.json'
+    try:
+        with open(output_path, 'w', encoding='utf-8') as json_file:
+            json.dump(conversation.messages, json_file, ensure_ascii=False, indent=4)
+    except IOError as e:
+        print(f"Error writing to file: {e}")
     return response.choices[0].message.content
 
 
