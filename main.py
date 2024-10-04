@@ -5,12 +5,18 @@ import webbrowser
 from os import environ
 from pathlib import Path
 
+from rich.console import Console
+from rich.markdown import Markdown
+
 import click
 
 from llm.client import get_llm_client
 from llm.conversation import Conversation
-from llm.prompts import build_command_generation_prompt, build_emoji_generation_prompt, build_link_generation_prompt
+from llm.prompts import build_command_generation_prompt, build_emoji_generation_prompt, build_link_generation_prompt, \
+    build_generic_prompt
 from utils.input import user_input
+
+console = Console()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,11 +24,69 @@ logging.basicConfig(
 )
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
+brand_emoji="🧐"
 
 @click.group()
 def cli():
     pass
 
+
+# New chat command with continuous loop
+@cli.command()
+@click.option('-i', '--instruction', type=str, help='Provide the initial instruction for chat')
+def chat(instruction):
+    conversation = Conversation()
+    conversation.add_system_message(build_generic_prompt())
+
+    # If there's an initial instruction, run it
+    if instruction:
+        conversation.add_user_message(instruction)
+        run_llm_streaming(conversation)
+
+    # Start continuous loop for follow-up instructions
+    while True:
+        instruction = user_input(f"\n{brand_emoji} What would you like to ask or follow up on? Type /q to quit: ")
+
+        if instruction.strip().lower() == "/q":
+            console.print("[red]Goodbye![/red] Exiting chat.")
+            break
+
+        # Add the user instruction to the conversation
+        conversation.add_user_message(instruction)
+
+        # Process the user's instruction with the LLM
+        run_llm_streaming(conversation)
+
+
+def run_llm_streaming(conversation):
+    """
+    This function calls the LLM in streaming mode and prints the response as it comes in.
+    """
+    client = get_llm_client()
+    response_stream = client.converse_stream(conversation)  # Assuming 'converse_stream' for streaming
+
+    # Iterate over the streaming response
+    for chunk in response_stream:
+        content_chunk = chunk.content
+        if content_chunk:
+            console.print(content_chunk, end='', markup=True)  # Print each part of the response as it's received
+
+    # Final message after the stream ends
+    console.print("\n[green]Stream complete.[/green]")  # Just a fun end message
+
+
+@cli.command()
+@click.option('-i', '--instruction', type=str, help='Provide the instruction for chat completion')
+def complete(instruction):
+    if not instruction:
+        instruction = user_input(f"\n{brand_emoji} What would you like to chat about?")
+    conversation = Conversation()
+    conversation.add_system_message(build_generic_prompt())
+    conversation.add_user_message(instruction)
+    content = run_llm(conversation)
+
+    # Print the markdown to terminal using rich
+    console.print(Markdown(content))
 
 @cli.command()
 @click.option('-i', '--instruction', type=str, help='Use natural language to describe what you want to do')
@@ -31,11 +95,11 @@ def cli():
               help='Knowledge base file path')
 def run(instruction, extra_args, kb):
     if not instruction:
-        instruction = user_input("🧐What shall I run, your highness:")
+        instruction = user_input(f"\n{brand_emoji} What shall I run, your highness:")
     conversation = Conversation()
     while instruction != '/q':
         run_action(instruction, extra_args, kb, conversation)
-        instruction = user_input("What else do you need? /q to quit:")
+        instruction = user_input(f"\n{brand_emoji} What else do you need? /q to quit:")
 
 
 @cli.command()
@@ -44,7 +108,7 @@ def run(instruction, extra_args, kb):
               help='Knowledge base file path')
 def goto(instruction, kb):
     if not instruction:
-        instruction = user_input("🧐Describe your link:")
+        instruction = user_input(f"\n{brand_emoji} Describe your link:")
     conversation = Conversation()
     goto_link(instruction, kb, conversation)
 
@@ -53,7 +117,7 @@ def goto(instruction, kb):
 @click.option('-i', '--instruction', type=str, help='Use natural language to describe what you want to do')
 def emoji(instruction):
     if not instruction:
-        instruction = user_input("Describe your emoji:")
+        instruction = user_input(f"\n{brand_emoji} Describe your emoji:")
     conversation = Conversation()
     get_emoji(instruction, conversation)
 
@@ -106,7 +170,7 @@ def run_action(action, extra_args, kb, conversation):
     content = run_llm(conversation)
     command_from_llm = sanitize_shell_command(content)
     shell, rc = get_shell_and_rc()
-    edited_command = user_input(f"Running command with {shell}?\n", default=command_from_llm)
+    edited_command = user_input(f"Running this command?\n", default=command_from_llm)
     final_command = f'source {rc} && {edited_command}'
     result = subprocess.run(final_command, shell=True, executable=shell)
     print(f"Command returned status {result.returncode}")

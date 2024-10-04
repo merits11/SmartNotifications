@@ -7,6 +7,7 @@ def user_input(hint, default=""):
     if sys.stdin.isatty():
         final_value = prompt(hint, default=default).strip()
     else:
+        # if input is not a terminal
         default_output= f' (defaults to  `{default}`)' if default else ""
         final_value = input(f"{hint}{default_output}").strip()
         if not final_value:

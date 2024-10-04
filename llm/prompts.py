@@ -1,5 +1,16 @@
 from typing import Dict
+
 # Template with placeholders for user_input and knowledge_file_content
+
+
+generic_system_prompt = """
+You are a helpful AI assistant designed to support software engineers working on MacOS in a CLI environment.
+
+Your goal is to provide accurate, concise, and relevant information, code snippets, or suggestions for terminal-based tasks.
+
+Respond in Markdown format with appropriate code blocks, lists, and headings.
+You can also assist with a wide range of other topics—feel free to make things fun and enjoyable when appropriate!
+"""
 
 generate_command_prompt_template = """
 You are an assistant that maps user input to predefined shell function calls.
@@ -23,7 +34,6 @@ Your task is to analyze the input and return the most appropriate emoji that rep
 Respond only with the emoji.
 """
 
-
 generate_link_prompt_template = """
 You are an assistant that generates a single link based on user input.
 
@@ -39,18 +49,24 @@ Knowledge file content:
 Respond only with the complete link or URL.
 """
 
+
+def build_generic_prompt() -> str:
+    return generic_system_prompt
+
+
 def build_link_generation_prompt(knowledge_file_content: str) -> str:
-    args = { 'knowledge_file_content': knowledge_file_content }
+    args = {'knowledge_file_content': knowledge_file_content}
     return build_prompt(generate_link_prompt_template, args)
 
 
 def build_command_generation_prompt(knowledge_file_content: str) -> str:
-    args = { 'knowledge_file_content': knowledge_file_content}
+    args = {'knowledge_file_content': knowledge_file_content}
     return build_prompt(generate_command_prompt_template, args)
 
 
 def build_emoji_generation_prompt() -> str:
     return build_prompt(generate_emoji_prompt_template, {})
+
 
 def build_prompt(template: str, args: Dict) -> str:
     return template.format(**args)
