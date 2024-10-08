@@ -5,10 +5,9 @@ import webbrowser
 from os import environ
 from pathlib import Path
 
+import click
 from rich.console import Console
 from rich.markdown import Markdown
-
-import click
 
 from llm.client import get_llm_client
 from llm.conversation import Conversation
@@ -28,14 +27,19 @@ brand_emoji = "🧐"
 
 
 @click.group()
-def cli():
-    pass
+@click.option('-s', '--system-prompt-file', type=str, default=None,
+              help='Path to the system prompt file')
+@click.pass_context
+def cli(ctx, system_prompt_file):
+    ctx.ensure_object(dict)
+    ctx.obj['system_prompt_file'] = system_prompt_file
 
 
 # New chat command with continuous loop
 @cli.command()
 @click.option('-i', '--instruction', type=str, help='Provide the initial instruction for chat')
-def chat(instruction):
+@click.pass_context
+def chat(ctx, instruction):
     conversation = Conversation()
     conversation.add_system_message(build_generic_prompt())
 
@@ -61,7 +65,8 @@ def chat(instruction):
 
 @cli.command()
 @click.option('-i', '--instruction', type=str, help='Provide the instruction for chat completion')
-def complete(instruction):
+@click.pass_context
+def complete(ctx, instruction):
     if not instruction:
         instruction = user_input(f"\n{brand_emoji} What would you like to ask about?")
     conversation = Conversation()
@@ -78,13 +83,14 @@ def complete(instruction):
 @click.argument('extra_args', nargs=-1)
 @click.option('--kb', type=str, default=lambda: str(Path(__file__).resolve().parent / 'knowledge/private_kb.md'),
               help='Knowledge base file path')
-def run(instruction, extra_args, kb):
+@click.pass_context
+def run(ctx, instruction, extra_args, kb):
     if not instruction:
         instruction = user_input(f"\n{brand_emoji} What shall I run, your highness:")
     conversation = Conversation()
     kb_content = Path(kb).read_text()
     system_prompt = build_command_generation_prompt(kb_content)
-    conversation.add_system_message(system_prompt)
+    conversation.add_system_message(load_system_prompt(ctx, system_prompt))
     if extra_args:
         conversation.add_user_message(f"Here are the file arguments user provided: {extra_args}")
     while instruction != '/q':
@@ -96,20 +102,22 @@ def run(instruction, extra_args, kb):
 @click.option('-i', '--instruction', type=str, help='Use natural language to describe what you want to do')
 @click.option('--kb', type=str, default=lambda: str(Path(__file__).resolve().parent / 'knowledge/private_ddlol.md'),
               help='Knowledge base file path')
-def goto(instruction, kb):
+@click.pass_context
+def goto(ctx, instruction, kb):
     if not instruction:
         instruction = user_input(f"\n{brand_emoji} Describe your link:")
     conversation = Conversation()
-    goto_link(instruction, kb, conversation)
+    goto_link(ctx, instruction, kb, conversation)
 
 
 @cli.command()
 @click.option('-i', '--instruction', type=str, help='Use natural language to describe what you want to do')
-def emoji(instruction):
+@click.pass_context
+def emoji(ctx, instruction):
     if not instruction:
         instruction = user_input(f"\n{brand_emoji} Describe your emoji:")
     conversation = Conversation()
-    get_emoji(instruction, conversation)
+    get_emoji(ctx, instruction, conversation)
 
 
 def sanitize_shell_command(content: str) -> str:
@@ -129,18 +137,18 @@ def get_shell_and_rc():
     raise ValueError(f'Not yet implemented for shell {shell}')
 
 
-def get_emoji(instruction, conversation):
+def get_emoji(ctx, instruction, conversation):
     system_prompt = build_emoji_generation_prompt()
-    conversation.add_system_message(system_prompt)
+    conversation.add_system_message(load_system_prompt(ctx, system_prompt))
     conversation.add_user_message(f"Here is the user input: {instruction}")
     content = run_llm(conversation)
     console.print(f"[bold green]Here is your emoji:[/bold green] {content}")
 
 
-def goto_link(instruction, kb, conversation):
+def goto_link(ctx, instruction, kb, conversation):
     kb_content = Path(kb).read_text()
     system_prompt = build_link_generation_prompt(kb_content)
-    conversation.add_system_message(system_prompt)
+    conversation.add_system_message(load_system_prompt(ctx, system_prompt))
     conversation.add_user_message(f"Here is the user input: {instruction}")
     link = run_llm(conversation)
     console.print(f"[bold blue]Opening link:[/bold blue] [underline]{link}[/underline]")
@@ -189,6 +197,14 @@ def run_llm_streaming(conversation):
 
     # Final message after the stream ends
     console.print("\n[green]Stream complete.[/green]")  # Just a fun end message
+
+
+def load_system_prompt(ctx, default_system_prompt):
+    system_prompt_file = ctx.obj.get('system_prompt_file')
+    if system_prompt_file and Path(system_prompt_file).exists():
+        return Path(system_prompt_file).read_text()
+    else:
+        return default_system_prompt
 
 
 if __name__ == "__main__":
