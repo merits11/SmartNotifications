@@ -49,6 +49,17 @@ Knowledge file content:
 Respond only with the complete link or URL.
 """
 
+text_enhancement_prompt = """
+You are a text enhancement assistant. Your task is to enhance the provided user input by optimizing its grammar and making it more understandable.
+
+1. Correct any grammatical errors.
+2. Improve sentence structure for clarity.
+3. Ensure the content is easy to read and understand.
+4. Perform any other enhancements that you think are necessary or requested by the user.
+
+Respond only with the enhanced text.
+"""
+
 
 def build_generic_prompt() -> str:
     return generic_system_prompt
@@ -66,6 +77,10 @@ def build_command_generation_prompt(knowledge_file_content: str) -> str:
 
 def build_emoji_generation_prompt() -> str:
     return build_prompt(generate_emoji_prompt_template, {})
+
+
+def build_text_enhancement_prompt() -> str:
+    return text_enhancement_prompt
 
 
 def build_prompt(template: str, args: Dict) -> str:

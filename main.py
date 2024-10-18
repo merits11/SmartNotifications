@@ -12,8 +12,9 @@ from rich.markdown import Markdown
 from llm.client import get_llm_client
 from llm.conversation import Conversation
 from llm.prompts import build_command_generation_prompt, build_emoji_generation_prompt, build_link_generation_prompt, \
-    build_generic_prompt
+    build_generic_prompt, build_text_enhancement_prompt
 from utils.input import user_input
+import pyperclip
 
 console = Console()
 
@@ -117,7 +118,26 @@ def emoji(ctx, instruction):
     if not instruction:
         instruction = user_input(f"\n{brand_emoji} Describe your emoji:")
     conversation = Conversation()
-    get_emoji(ctx, instruction, conversation)
+    content = get_emoji(ctx, instruction, conversation)
+    # Copy the enhanced text to clipboard
+    pyperclip.copy(content)  # Copying the content to clipboard
+    console.print("[bold blue]Emoji copied to clipboard![/bold blue]")
+
+
+@cli.command()
+@click.option('-i', '--instruction', type=str, default="", help='Specific instruction for the text enhancement')
+@click.option('-t', '--text', type=str, help='Text to enhance')
+@click.pass_context
+def enhance(ctx, instruction, text):
+    if not instruction:
+        instruction = user_input(f"\n{brand_emoji} Any specific instruction:").strip()
+    if not text:
+        text = user_input(f"\n{brand_emoji} What text would you like to enhance:")
+    conversation = Conversation()
+    content = enhance_text(ctx, instruction, text, conversation)
+    # Copy the enhanced text to clipboard
+    pyperclip.copy(content)  # Copying the content to clipboard
+    console.print("[bold blue]Enhanced text copied to clipboard![/bold blue]")
 
 
 def sanitize_shell_command(content: str) -> str:
@@ -137,12 +157,24 @@ def get_shell_and_rc():
     raise ValueError(f'Not yet implemented for shell {shell}')
 
 
+def enhance_text(ctx, instruction, text_input, conversation):
+    system_prompt = build_text_enhancement_prompt()
+    conversation.add_system_message(load_system_prompt(ctx, system_prompt))
+    if instruction:
+        conversation.add_user_message(f"Here is the user instruction:\n\n{instruction}")
+    conversation.add_user_message(f"Here is the user input: \n\n{text_input}")
+    content = run_llm(conversation)
+    console.print(f"[bold green]Here is enhanced text:[/bold green]\n\n{content}")
+    return content
+
+
 def get_emoji(ctx, instruction, conversation):
     system_prompt = build_emoji_generation_prompt()
     conversation.add_system_message(load_system_prompt(ctx, system_prompt))
     conversation.add_user_message(f"Here is the user input: {instruction}")
     content = run_llm(conversation)
     console.print(f"[bold green]Here is your emoji:[/bold green] {content}")
+    return content
 
 
 def goto_link(ctx, instruction, kb, conversation):
