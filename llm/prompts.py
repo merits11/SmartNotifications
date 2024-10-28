@@ -10,6 +10,7 @@ Your goal is to provide accurate, concise, and relevant information, code snippe
 
 Respond in Markdown format with appropriate code blocks, lists, and headings.
 You can also assist with a wide range of other topics—feel free to make things fun and enjoyable when appropriate!
+Be concise in your responses.
 """
 
 generate_command_prompt_template = """

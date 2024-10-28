@@ -188,17 +188,27 @@ def goto_link(ctx, instruction, kb, conversation):
 
 
 def run_action(action, conversation):
-    conversation.add_user_message(f"User follows up: {action}")
+    if action == "/regenerate":
+        conversation.add_user_message(f"User does not like the command, regenerate!")
+    else:
+        conversation.add_user_message(f"User follows up: {action}")
     content = run_llm(conversation)
     command_from_llm = sanitize_shell_command(content)
     shell, rc = get_shell_and_rc()
     edited_command = user_input(f"Running this command?\n", default=command_from_llm)
-    final_command = f'source {rc} && {edited_command}'
-    result = subprocess.run(final_command, shell=True, executable=shell)
-    status_color = "green" if result.returncode == 0 else "red"
-    console.print(
-        f"\n[bold cyan]Command returned status:[/bold cyan] [bold {status_color}]{result.returncode}[/bold {status_color}]")
-    conversation.add_user_message(f"User ran `{edited_command}`, exited with code {result.returncode}")
+    # regenerating the final command
+    if edited_command.endswith("!"):
+        return run_action("/regenerate", conversation)
+    elif edited_command.endswith("~") or edited_command.endswith("/q"):
+        conversation.add_user_message("User aborted the command.")
+        return
+    else:
+        final_command = f'source {rc} && {edited_command}'
+        result = subprocess.run(final_command, shell=True, executable=shell)
+        status_color = "green" if result.returncode == 0 else "red"
+        console.print(
+            f"\n[bold cyan]Command returned status:[/bold cyan] [bold {status_color}]{result.returncode}[/bold {status_color}]")
+        conversation.add_user_message(f"User ran `{edited_command}`, exited with code {result.returncode}")
 
 
 def run_llm(conversation):
