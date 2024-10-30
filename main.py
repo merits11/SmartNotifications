@@ -42,7 +42,7 @@ def cli(ctx, system_prompt_file):
 @click.pass_context
 def chat(ctx, instruction):
     conversation = Conversation()
-    conversation.add_system_message(build_generic_prompt())
+    conversation.add_system_message(load_system_prompt(ctx, build_generic_prompt()))
 
     # If there's an initial instruction, run it
     if instruction:
@@ -71,7 +71,7 @@ def complete(ctx, instruction):
     if not instruction:
         instruction = user_input(f"\n{brand_emoji} What would you like to ask about?")
     conversation = Conversation()
-    conversation.add_system_message(build_generic_prompt())
+    conversation.add_system_message(load_system_prompt(ctx, build_generic_prompt()))
     conversation.add_user_message(instruction)
     content = run_llm(conversation)
 
