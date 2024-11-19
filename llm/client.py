@@ -48,6 +48,8 @@ class Client:
 
         message = response.choices[0].message
         conversation.add_message(message.role, message.content)
+        # Log the total token usage
+        conversation.token_usage = response.usage.total_tokens
         return response
 
     # New streaming method

@@ -6,6 +6,7 @@ from os import environ
 from pathlib import Path
 
 import click
+from prompt_toolkit.key_binding.bindings.named_commands import edit_and_execute
 from rich.console import Console
 from rich.markdown import Markdown
 
@@ -92,6 +93,10 @@ def run(ctx, instruction, extra_args, kb):
     kb_content = Path(kb).read_text()
     system_prompt = build_command_generation_prompt(kb_content)
     conversation.add_system_message(load_system_prompt(ctx, system_prompt))
+    conversation.add_user_message(
+        f"Current directory: \"{Path.cwd()}\"\n"
+        f"Current shell: \"{environ.get('SHELL')}\"\n"
+        f"Current user: \"{environ.get('USER')}\"")
     if extra_args:
         conversation.add_user_message(f"Here are the file arguments user provided: {extra_args}")
     while instruction != '/q':
@@ -188,23 +193,37 @@ def goto_link(ctx, instruction, kb, conversation):
 
 
 def run_action(action, conversation):
-    if action == "/regenerate":
-        conversation.add_user_message(f"User does not like the command, regenerate!")
+    if not action:
+        return
+    # If the action starts with '!', it's a direct command to run
+    if action.startswith("!"):
+        edited_command = action[1:]
+        conversation.add_user_message(f"User directly ran `{edited_command}`")
+    elif action.strip() in ["/last", ':last']:
+        last_command = conversation.get_metadata("last_command")
+        edited_command = user_input(f"Running this command?\n", default=last_command)
     else:
-        conversation.add_user_message(f"User follows up: {action}")
-    content = run_llm(conversation)
-    command_from_llm = sanitize_shell_command(content)
-    shell, rc = get_shell_and_rc()
-    edited_command = user_input(f"Running this command?\n", default=command_from_llm)
-    # regenerating the final command
+        if action == "/regenerate":
+            conversation.add_user_message(f"User does not like the command, regenerate!")
+        else:
+            conversation.add_user_message(f"User follows up: {action}")
+        content = run_llm(conversation)
+        command_from_llm = sanitize_shell_command(content)
+        edited_command = user_input(f"Running this command?\n", default=command_from_llm)
+    if not edited_command:
+        console.print("[red]No command to run![/red]")
+        return
+        # regenerating the final command
     if edited_command.endswith("!"):
         return run_action("/regenerate", conversation)
     elif edited_command.endswith("~") or edited_command.endswith("/q"):
         conversation.add_user_message("User aborted the command.")
         return
     else:
+        shell, rc = get_shell_and_rc()
         final_command = f'source {rc} && {edited_command}'
         result = subprocess.run(final_command, shell=True, executable=shell)
+        conversation.add_metadata("last_command", edited_command)
         status_color = "green" if result.returncode == 0 else "red"
         console.print(
             f"\n[bold cyan]Command returned status:[/bold cyan] [bold {status_color}]{result.returncode}[/bold {status_color}]")
@@ -218,7 +237,7 @@ def run_llm(conversation):
     output_path = '/tmp/smart-conversation.json'
     try:
         with open(output_path, 'w', encoding='utf-8') as json_file:
-            json.dump(conversation.messages, json_file, ensure_ascii=False, indent=4)
+            json.dump(conversation.to_dict(), json_file, ensure_ascii=False, indent=4)
     except IOError as e:
         print(f"Error writing to file: {e}")
     return response.choices[0].message.content
@@ -243,8 +262,12 @@ def run_llm_streaming(conversation):
 
 def load_system_prompt(ctx, default_system_prompt):
     system_prompt_file = ctx.obj.get('system_prompt_file')
-    if system_prompt_file and Path(system_prompt_file).exists():
-        return Path(system_prompt_file).read_text()
+    if system_prompt_file:
+        if Path(system_prompt_file).exists():
+            return Path(system_prompt_file).read_text()
+        else:
+            console.print(f"[red]System prompt file not found at path: {system_prompt_file}[/red]")
+            return default_system_prompt
     else:
         return default_system_prompt
 
