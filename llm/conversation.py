@@ -1,9 +1,15 @@
+import json
+
+import tiktoken
+
+
 class Conversation:
     def __init__(self, model=None):
         self.messages = []
         self.model = model
         self.token_usage = 0
         self.extra_data = {}
+        self.encoding = tiktoken.encoding_for_model("gpt-4o")
 
     def add_message(self, role, content):
         self.messages.append({"role": role, "content": content})
@@ -22,6 +28,12 @@ class Conversation:
 
     def get_metadata(self, key):
         return self.extra_data.get(key)
+
+    def get_token_usage(self):
+        return self.token_usage
+
+    def estimate_token_usage(self):
+        self.token_usage = len(self.encoding.encode(json.dumps(self.to_dict())))
 
     def to_dict(self):
         return {

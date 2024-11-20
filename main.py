@@ -6,7 +6,7 @@ from os import environ
 from pathlib import Path
 
 import click
-from prompt_toolkit.key_binding.bindings.named_commands import edit_and_execute
+import pyperclip
 from rich.console import Console
 from rich.markdown import Markdown
 
@@ -15,7 +15,6 @@ from llm.conversation import Conversation
 from llm.prompts import build_command_generation_prompt, build_emoji_generation_prompt, build_link_generation_prompt, \
     build_generic_prompt, build_text_enhancement_prompt
 from utils.input import user_input
-import pyperclip
 
 console = Console()
 
@@ -83,14 +82,16 @@ def complete(ctx, instruction):
 @cli.command()
 @click.option('-i', '--instruction', type=str, help='Use natural language to describe what you want to do')
 @click.argument('extra_args', nargs=-1)
-@click.option('--kb', type=str, default=lambda: str(Path(__file__).resolve().parent / 'knowledge/private_kb.md'),
-              help='Knowledge base file path')
+@click.option('--kb', type=str, default="", help='Knowledge base file path')
 @click.pass_context
 def run(ctx, instruction, extra_args, kb):
     if not instruction:
         instruction = user_input(f"\n{brand_emoji} What shall I run, your highness:")
     conversation = Conversation()
-    kb_content = Path(kb).read_text()
+    kb_content = ""
+    kb_path = Path(kb)
+    if kb and kb_path.exists():
+        kb_content = kb_path.read_text()
     system_prompt = build_command_generation_prompt(kb_content)
     conversation.add_system_message(load_system_prompt(ctx, system_prompt))
     conversation.add_user_message(
@@ -106,8 +107,7 @@ def run(ctx, instruction, extra_args, kb):
 
 @cli.command()
 @click.option('-i', '--instruction', type=str, help='Use natural language to describe what you want to do')
-@click.option('--kb', type=str, default=lambda: str(Path(__file__).resolve().parent / 'knowledge/private_ddlol.md'),
-              help='Knowledge base file path')
+@click.option('--kb', type=str, default="", help='Knowledge base file path')
 @click.pass_context
 def goto(ctx, instruction, kb):
     if not instruction:
@@ -183,7 +183,10 @@ def get_emoji(ctx, instruction, conversation):
 
 
 def goto_link(ctx, instruction, kb, conversation):
-    kb_content = Path(kb).read_text()
+    kb_content = ""
+    kb_path = Path(kb)
+    if kb and kb_path.exists():
+        kb_content = kb_path.read_text()
     system_prompt = build_link_generation_prompt(kb_content)
     conversation.add_system_message(load_system_prompt(ctx, system_prompt))
     conversation.add_user_message(f"Here is the user input: {instruction}")
@@ -257,7 +260,7 @@ def run_llm_streaming(conversation):
             console.print(content_chunk, end='', markup=True)  # Print each part of the response as it's received
 
     # Final message after the stream ends
-    console.print("\n[green]Stream complete.[/green]")  # Just a fun end message
+    console.print(f"\n[green]Stream complete. Tokens used: {conversation.get_token_usage()}[/green]")
 
 
 def load_system_prompt(ctx, default_system_prompt):

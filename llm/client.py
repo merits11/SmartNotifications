@@ -68,9 +68,13 @@ class Client:
             stream=True  # Enable streaming
         )
 
+        response_text = ""
         for chunk in stream:
             if 'error' in chunk:
                 raise OpenAIAPIError(f"Error from OpenAI API: {chunk['error']['message']}")
 
             if chunk.choices and chunk.choices[0].delta:
+                response_text += str(chunk.choices[0].delta.content)
                 yield chunk.choices[0].delta
+        conversation.add_message("assistant", response_text)
+        conversation.estimate_token_usage()
