@@ -5,6 +5,7 @@ from utils.config import read_config
 
 import tiktoken
 
+encoding = tiktoken.encoding_for_model("gpt-4o")
 
 class Conversation:
     def __init__(self, model=None):
@@ -16,7 +17,6 @@ class Conversation:
             self.model = config.model
         self.token_usage = 0
         self.extra_data = {}
-        self.encoding = tiktoken.encoding_for_model("gpt-4o")
         self.started_at = datetime.datetime.now()
 
     def add_message(self, role, content):
@@ -44,7 +44,7 @@ class Conversation:
         return self.token_usage
 
     def estimate_token_usage(self):
-        self.token_usage = len(self.encoding.encode(json.dumps(self.to_dict())))
+        self.token_usage = len(encoding.encode(json.dumps(self.to_dict())))
 
     def to_dict(self):
         return {
