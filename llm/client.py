@@ -26,9 +26,9 @@ class OpenAIAPIError(Exception):
 
 class Client:
 
-    def __init__(self, model=DEFAULT_MODEL, client=get_openai_client()) -> None:
+    def __init__(self, model=None, client=get_openai_client()) -> None:
         self.client = client
-        self.model = model
+        self.model = model if model else DEFAULT_MODEL
 
     def _call_chat_completion(self, model, messages, tools):
         response = self.client.chat.completions.create(model=model, messages=messages, tools=tools)

@@ -11,6 +11,7 @@ class SmartConfig:
         self.telegram_token = self.config.get('telegram_token')
         self.chat_id = self.config.get('telegram_chat_id')
         self.important_chat_id = self.config.get('telegram_important_chat_id')
+        self.model = self.config.get('model')
 
     @classmethod
     def from_file(cls, config_path: Path) -> 'SmartConfig':

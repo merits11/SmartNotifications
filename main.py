@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import subprocess
 import webbrowser
 from os import environ
@@ -53,6 +54,9 @@ def chat(ctx, instruction):
     while True:
         instruction = user_input(f"\n{brand_emoji} What would you like to chat about? Type /q to quit: ")
 
+        if handle_commands(conversation, instruction):
+            continue
+        # Handle special commands
         if instruction.strip().lower() == "/q":
             console.print("[red]Goodbye![/red] Exiting chat.")
             break
@@ -101,7 +105,8 @@ def run(ctx, instruction, extra_args, kb):
     if extra_args:
         conversation.add_user_message(f"Here are the file arguments user provided: {extra_args}")
     while instruction != '/q':
-        run_action(instruction, conversation)
+        if not handle_commands(conversation, instruction):
+            run_action(instruction, conversation)
         instruction = user_input(f"\n{brand_emoji} What else do you need? /q to quit:")
 
 
@@ -160,6 +165,31 @@ def get_shell_and_rc():
     if 'zsh' in shell:
         return shell, f"{environ.get('HOME')}/.zshrc"
     raise ValueError(f'Not yet implemented for shell {shell}')
+
+
+def handle_commands(conversation, instruction) -> bool:
+    if not instruction:
+        return False
+
+    if instruction == "/pb":
+        content = pyperclip.paste()
+        if not content:
+            console.print("[red]No content in clipboard![/red]")
+            return True
+        conversation.add_user_message("Save this for context:\n\n" + content)
+        conversation.add_message("assistant", "okay!")
+        console.print(f"[bold blue]{len(content)} characters saved for context![/bold blue]")
+        return True
+
+    if instruction == "/save":
+        save_path = Path(os.getenv("HOME")) / "Documents" / "Smart" / "Conversations"
+        save_path.mkdir(parents=True, exist_ok=True)
+        file_name = f"{conversation.started_at.strftime('%Y-%m-%d-%H-%M-%S')}.json"
+        with open(save_path / file_name, 'w', encoding='utf-8') as file:
+            json.dump(conversation.to_dict(), file, ensure_ascii=False, indent=4)
+        console.print(f"[bold blue]Conversation saved to:[/bold blue] {save_path / file_name}")
+        return True
+    return False
 
 
 def enhance_text(ctx, instruction, text_input, conversation):
