@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 import webbrowser
 from os import environ
 from pathlib import Path
@@ -15,6 +16,7 @@ from llm.client import get_llm_client
 from llm.conversation import Conversation
 from llm.prompts import build_command_generation_prompt, build_emoji_generation_prompt, build_link_generation_prompt, \
     build_generic_prompt, build_text_enhancement_prompt
+from utils.helper import get_shell_and_rc, read_file, sanitize_shell_command
 from utils.input import user_input
 
 console = Console()
@@ -26,6 +28,8 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 brand_emoji = "🧐"
+
+last_conversation_path = '/tmp/smart-conversation.json'
 
 
 @click.group()
@@ -53,13 +57,9 @@ def chat(ctx, instruction):
     # Start continuous loop for follow-up instructions
     while True:
         instruction = user_input(f"\n{brand_emoji} What would you like to chat about? Type /q to quit: ")
-
-        if handle_commands(conversation, instruction):
+        instruction = handle_commands(conversation, instruction)
+        if not instruction:
             continue
-        # Handle special commands
-        if instruction.strip().lower() == "/q":
-            console.print("[red]Goodbye![/red] Exiting chat.")
-            break
 
         # Add the user instruction to the conversation
         conversation.add_user_message(instruction)
@@ -76,6 +76,9 @@ def complete(ctx, instruction):
         instruction = user_input(f"\n{brand_emoji} What would you like to ask about?")
     conversation = Conversation()
     conversation.add_system_message(load_system_prompt(ctx, build_generic_prompt()))
+    instruction = handle_commands(conversation, instruction)
+    if not instruction:
+        return
     conversation.add_user_message(instruction)
     content = run_llm(conversation)
 
@@ -92,10 +95,7 @@ def run(ctx, instruction, extra_args, kb):
     if not instruction:
         instruction = user_input(f"\n{brand_emoji} What shall I run, your highness:")
     conversation = Conversation()
-    kb_content = ""
-    kb_path = Path(kb)
-    if kb and kb_path.exists():
-        kb_content = kb_path.read_text()
+    kb_content = read_file(kb)
     system_prompt = build_command_generation_prompt(kb_content)
     conversation.add_system_message(load_system_prompt(ctx, system_prompt))
     conversation.add_user_message(
@@ -104,8 +104,9 @@ def run(ctx, instruction, extra_args, kb):
         f"Current user: \"{environ.get('USER')}\"")
     if extra_args:
         conversation.add_user_message(f"Here are the file arguments user provided: {extra_args}")
-    while instruction != '/q':
-        if not handle_commands(conversation, instruction):
+    while True:
+        instruction = handle_commands(conversation, instruction)
+        if instruction:
             run_action(instruction, conversation)
         instruction = user_input(f"\n{brand_emoji} What else do you need? /q to quit:")
 
@@ -118,6 +119,9 @@ def goto(ctx, instruction, kb):
     if not instruction:
         instruction = user_input(f"\n{brand_emoji} Describe your link:")
     conversation = Conversation()
+    instruction = handle_commands(conversation, instruction)
+    if not instruction:
+        return
     goto_link(ctx, instruction, kb, conversation)
 
 
@@ -128,6 +132,9 @@ def emoji(ctx, instruction):
     if not instruction:
         instruction = user_input(f"\n{brand_emoji} Describe your emoji:")
     conversation = Conversation()
+    instruction = handle_commands(conversation, instruction)
+    if not instruction:
+        return
     content = get_emoji(ctx, instruction, conversation)
     # Copy the enhanced text to clipboard
     pyperclip.copy(content)  # Copying the content to clipboard
@@ -139,37 +146,26 @@ def emoji(ctx, instruction):
 @click.option('-t', '--text', type=str, help='Text to enhance')
 @click.pass_context
 def enhance(ctx, instruction, text):
+    conversation = Conversation()
     if not instruction:
         instruction = user_input(f"\n{brand_emoji} Any specific instruction:").strip()
+    instruction = handle_commands(conversation, instruction)
     if not text:
         text = user_input(f"\n{brand_emoji} What text would you like to enhance:")
-    conversation = Conversation()
     content = enhance_text(ctx, instruction, text, conversation)
     # Copy the enhanced text to clipboard
     pyperclip.copy(content)  # Copying the content to clipboard
     console.print("[bold blue]Enhanced text copied to clipboard![/bold blue]")
 
 
-def sanitize_shell_command(content: str) -> str:
-    lines = content.split('\n')
-    if len(lines) == 1:
-        return content
-    elif len(lines) == 3:
-        return lines[1]
-    else:
-        raise ValueError(f"response is not parsable: {content}")
-
-
-def get_shell_and_rc():
-    shell = environ.get("SHELL", '/bin/zsh')
-    if 'zsh' in shell:
-        return shell, f"{environ.get('HOME')}/.zshrc"
-    raise ValueError(f'Not yet implemented for shell {shell}')
-
-
-def handle_commands(conversation, instruction) -> bool:
+def handle_commands(conversation, instruction) -> str:
     if not instruction:
-        return False
+        return instruction
+
+    # Handle special commands
+    if instruction.strip().lower() == "/q":
+        console.print("[red]Goodbye![/red] Exiting chat.")
+        sys.exit(0)
 
     if instruction == "/pb":
         content = pyperclip.paste()
@@ -179,17 +175,23 @@ def handle_commands(conversation, instruction) -> bool:
         conversation.add_user_message("Save this for context:\n\n" + content)
         conversation.add_message("assistant", "okay!")
         console.print(f"[bold blue]{len(content)} characters saved for context![/bold blue]")
-        return True
+        return ""
 
     if instruction == "/save":
         save_path = Path(os.getenv("HOME")) / "Documents" / "Smart" / "Conversations"
         save_path.mkdir(parents=True, exist_ok=True)
         file_name = f"{conversation.started_at.strftime('%Y-%m-%d-%H-%M-%S')}.json"
-        with open(save_path / file_name, 'w', encoding='utf-8') as file:
-            json.dump(conversation.to_dict(), file, ensure_ascii=False, indent=4)
+        save_conversation(conversation, save_path / file_name)
         console.print(f"[bold blue]Conversation saved to:[/bold blue] {save_path / file_name}")
-        return True
-    return False
+        return ""
+
+    if instruction.startswith("/model"):
+        model = instruction.split(" ")[1]
+        conversation.model = model
+        console.print(f"[bold blue]Model set to:[/bold blue] {model}")
+        return ""
+
+    return instruction
 
 
 def enhance_text(ctx, instruction, text_input, conversation):
@@ -213,10 +215,7 @@ def get_emoji(ctx, instruction, conversation):
 
 
 def goto_link(ctx, instruction, kb, conversation):
-    kb_content = ""
-    kb_path = Path(kb)
-    if kb and kb_path.exists():
-        kb_content = kb_path.read_text()
+    kb_content = read_file(kb)
     system_prompt = build_link_generation_prompt(kb_content)
     conversation.add_system_message(load_system_prompt(ctx, system_prompt))
     conversation.add_user_message(f"Here is the user input: {instruction}")
@@ -266,13 +265,7 @@ def run_action(action, conversation):
 def run_llm(conversation):
     client = get_llm_client()
     response = client.converse(conversation)
-    # Write to JSON file TODO: organize better
-    output_path = '/tmp/smart-conversation.json'
-    try:
-        with open(output_path, 'w', encoding='utf-8') as json_file:
-            json.dump(conversation.to_dict(), json_file, ensure_ascii=False, indent=4)
-    except IOError as e:
-        print(f"Error writing to file: {e}")
+    save_conversation(conversation, last_conversation_path)
     return response.choices[0].message.content
 
 
@@ -289,8 +282,17 @@ def run_llm_streaming(conversation):
         if content_chunk:
             console.print(content_chunk, end='', markup=True)  # Print each part of the response as it's received
 
+    save_conversation(conversation, last_conversation_path)  # Save the conversation to a file
     # Final message after the stream ends
     console.print(f"\n[green]Stream complete. Tokens used: {conversation.get_token_usage()}[/green]")
+
+
+def save_conversation(conversation, file_path):
+    try:
+        with open(file_path, 'w', encoding='utf-8') as json_file:
+            json.dump(conversation.to_dict(), json_file, ensure_ascii=False, indent=4)
+    except IOError as e:
+        console.print(f"[red]Error writing conversation to file: {e}[/red]")
 
 
 def load_system_prompt(ctx, default_system_prompt):
