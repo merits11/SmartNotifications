@@ -186,9 +186,13 @@ def handle_commands(conversation, instruction) -> str:
         return ""
 
     if instruction.startswith("/model"):
-        model = instruction.split(" ")[1]
-        conversation.model = model
-        console.print(f"[bold blue]Model set to:[/bold blue] {model}")
+        parts = instruction.split(" ")
+        if len(parts) > 1:
+            model = parts[1]
+            conversation.model = model
+            console.print(f"[bold blue]Model set to:[/bold blue] {model}")
+        else:
+            console.print("[red]Invalid model command![/red]")
         return ""
 
     return instruction
