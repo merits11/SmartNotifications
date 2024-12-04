@@ -73,8 +73,8 @@ class Client:
             if 'error' in chunk:
                 raise OpenAIAPIError(f"Error from OpenAI API: {chunk['error']['message']}")
 
-            if chunk.choices and chunk.choices[0].delta:
+            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
                 response_text += str(chunk.choices[0].delta.content)
                 yield chunk.choices[0].delta
-        conversation.add_message("assistant", response_text)
+        conversation.add_assistant_message(response_text)
         conversation.estimate_token_usage()

@@ -30,15 +30,16 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 brand_emoji = "🧐"
 
 last_conversation_path = '/tmp/smart-conversation.json'
+system_prompt_files_key = 'system_prompt_files'
 
 
 @click.group()
-@click.option('-s', '--system-prompt-file', type=str, default=None,
+@click.option('-s', '--system-prompt-file', type=str, default=[], multiple=True,
               help='Path to the system prompt file')
 @click.pass_context
 def cli(ctx, system_prompt_file):
     ctx.ensure_object(dict)
-    ctx.obj['system_prompt_file'] = system_prompt_file
+    ctx.obj[system_prompt_files_key] = system_prompt_file
 
 
 # New chat command with continuous loop
@@ -162,22 +163,37 @@ def handle_commands(conversation, instruction) -> str:
     if not instruction:
         return instruction
 
+    parts = instruction.split(" ")
+
     # Handle special commands
-    if instruction.strip().lower() == "/q":
+    if parts[0].strip().lower() == "/q":
         console.print("[red]Goodbye![/red] Exiting chat.")
         sys.exit(0)
 
-    if instruction == "/pb":
+    if parts[0] in ['/pb', '/paste']:
         content = pyperclip.paste()
         if not content:
             console.print("[red]No content in clipboard![/red]")
             return True
         conversation.add_user_message("Save this for context:\n\n" + content)
-        conversation.add_message("assistant", "okay!")
+        conversation.add_assistant_message("Okay.")
         console.print(f"[bold blue]{len(content)} characters saved for context![/bold blue]")
         return ""
 
-    if instruction == "/save":
+    if parts[0] in ['/cp', '/copy']:
+        if len(parts) > 1:
+            if parts[1].isdigit() and -len(conversation.messages) <= int(parts[1]) < len(conversation.messages):
+                index = int(parts[1])
+                pyperclip.copy(conversation.messages[index]["content"])
+                console.print(f"[bold blue]Message at index {index} copied to clipboard![/bold blue]")
+            else:
+                console.print("[red]Invalid index![/red]")
+        else:
+            pyperclip.copy(conversation.messages[-1]["content"])
+            console.print("[bold blue]Last message copied to clipboard![/bold blue]")
+        return ""
+
+    if parts[0] == "/save":
         save_path = Path(os.getenv("HOME")) / "Documents" / "Smart" / "Conversations"
         save_path.mkdir(parents=True, exist_ok=True)
         file_name = f"{conversation.started_at.strftime('%Y-%m-%d-%H-%M-%S')}.json"
@@ -193,6 +209,15 @@ def handle_commands(conversation, instruction) -> str:
             console.print(f"[bold blue]Model set to:[/bold blue] {model}")
         else:
             console.print("[red]Invalid model command![/red]")
+        return ""
+
+    if instruction == "/copy":
+        if conversation.messages:
+            last_message = conversation.messages[-1]["content"]
+            pyperclip.copy(last_message)
+            console.print("[bold blue]Last message copied to clipboard![/bold blue]")
+        else:
+            console.print("[red]No messages to copy![/red]")
         return ""
 
     return instruction
@@ -288,7 +313,7 @@ def run_llm_streaming(conversation):
 
     save_conversation(conversation, last_conversation_path)  # Save the conversation to a file
     # Final message after the stream ends
-    console.print(f"\n[green]Stream complete. Tokens used: {conversation.get_token_usage()}[/green]")
+    console.print(f"\n[green]Stream complete. Index: {len(conversation.messages)-1} Tokens: {conversation.get_token_usage()}[/green]")
 
 
 def save_conversation(conversation, file_path):
@@ -300,15 +325,17 @@ def save_conversation(conversation, file_path):
 
 
 def load_system_prompt(ctx, default_system_prompt):
-    system_prompt_file = ctx.obj.get('system_prompt_file')
-    if system_prompt_file:
-        if Path(system_prompt_file).exists():
-            return Path(system_prompt_file).read_text()
-        else:
-            console.print(f"[red]System prompt file not found at path: {system_prompt_file}[/red]")
-            return default_system_prompt
-    else:
-        return default_system_prompt
+    system_prompt_files = ctx.obj.get(system_prompt_files_key)
+    system_prompts = []
+    for system_prompt_file in system_prompt_files:
+        if system_prompt_file:
+            if Path(system_prompt_file).exists():
+                system_prompts.append(Path(system_prompt_file).read_text())
+            else:
+                console.print(f"[red]System prompt file not found at path: {system_prompt_file}[/red]")
+                continue
+    return [default_system_prompt] if not system_prompts else system_prompts
+
 
 
 if __name__ == "__main__":

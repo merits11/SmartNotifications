@@ -1,11 +1,12 @@
 import datetime
 import json
 
-from utils.config import read_config
-
 import tiktoken
 
+from utils.config import read_config
+
 encoding = tiktoken.encoding_for_model("gpt-4o")
+
 
 class Conversation:
     def __init__(self, model=None):
@@ -19,13 +20,24 @@ class Conversation:
         self.extra_data = {}
         self.started_at = datetime.datetime.now()
 
-    def add_message(self, role, content):
+    def add_message(self, role, content: str | list[str]) -> None:
+        if isinstance(content, list):
+            for item in content:
+                self.add_message(role, item)
+            return
         self.messages.append({"role": role, "content": content})
 
-    def add_user_message(self, content):
-        self.messages.append({"role": "user", "content": content})
+    def add_user_message(self, content: str | list[str]):
+        self.add_message("user", content)
 
-    def add_system_message(self, content):
+    def add_assistant_message(self, content: str | list[str]):
+        self.add_message("assistant", content)
+
+    def add_system_message(self, content: str | list[str]) -> None:
+        if isinstance(content, list):
+            for item in content:
+                self.add_system_message(item)
+            return
         if self.model and self.model.startswith("o1"):
             self.add_user_message(content)
             return  # No system messages for o1 models
