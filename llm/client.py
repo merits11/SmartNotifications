@@ -11,6 +11,8 @@ DEFAULT_MODEL = "gpt-4o-mini"
 @functools.lru_cache(maxsize=1)
 def get_openai_client():
     config = read_config()
+    if config.model.startswith("grok-"):
+        return OpenAI(api_key=config.llm_token, base_url="https://api.x.ai/v1")
     return OpenAI(api_key=config.llm_token)
 
 
