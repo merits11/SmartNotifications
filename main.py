@@ -248,7 +248,12 @@ def goto_link(ctx, instruction, kb, conversation):
     system_prompt = build_link_generation_prompt(kb_content)
     conversation.add_system_message(load_system_prompt(ctx, system_prompt))
     conversation.add_user_message(f"Here is the user input: {instruction}")
-    link = run_llm(conversation)
+    for _ in range(3):
+        link = run_llm(conversation)
+        if not link or not link.startswith("https://"):
+            conversation.add_user_message(f"Invalid link. It should start with 'https://'. Please regenerate!")
+        else:
+            break
     console.print(f"[bold blue]Opening link:[/bold blue] [underline]{link}[/underline]")
     webbrowser.open(link)
 
