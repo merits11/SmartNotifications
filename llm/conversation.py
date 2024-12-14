@@ -4,6 +4,7 @@ import datetime
 import json
 
 import tiktoken
+from markdown2 import markdown
 
 from utils.config import read_config
 
@@ -67,3 +68,27 @@ class Conversation:
             "messages": self.messages,
             "token_usage": self.token_usage
         }
+
+    def as_inner_html(self, last_n: int = 1):
+        markdown_content = ""
+        if last_n > len(self.messages):
+            last_n = len(self.messages)
+        for message in self.messages[-last_n:]:
+            markdown_content += f"**{message['role'].upper()}**\n\n{message['content']}\n\n"
+        # Convert Markdown to HTML
+        return markdown(markdown_content)
+
+    def as_html(self, last_n=1):
+        return f"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Markdown Output</title>
+        </head>
+        <body>
+            {self.as_inner_html(last_n=last_n)}
+        </body>
+        </html>
+        """

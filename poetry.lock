@@ -34,6 +34,17 @@ test = ["anyio[trio]", "coverage[toml] (>=7)", "exceptiongroup (>=1.2.0)", "hypo
 trio = ["trio (>=0.26.1)"]
 
 [[package]]
+name = "cached-property"
+version = "2.0.1"
+description = "A decorator for caching properties in classes."
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "cached_property-2.0.1-py3-none-any.whl", hash = "sha256:f617d70ab1100b7bcf6e42228f9ddcb78c676ffa167278d9f730d1c2fba69ccb"},
+    {file = "cached_property-2.0.1.tar.gz", hash = "sha256:484d617105e3ee0e4f1f58725e72a8ef9e93deee462222dbd51cd91230897641"},
+]
+
+[[package]]
 name = "certifi"
 version = "2024.8.30"
 description = "Python package for providing Mozilla's CA Bundle."
@@ -388,6 +399,23 @@ rtd = ["jupyter_sphinx", "mdit-py-plugins", "myst-parser", "pyyaml", "sphinx", "
 testing = ["coverage", "pytest", "pytest-cov", "pytest-regressions"]
 
 [[package]]
+name = "markdown2"
+version = "2.5.2"
+description = "A fast and complete Python implementation of Markdown"
+optional = false
+python-versions = "<4,>=3.9"
+files = [
+    {file = "markdown2-2.5.2-py3-none-any.whl", hash = "sha256:bed80d301a33845be633acde47a67cf265c57ddf9cbe3cb11c49c18016c2f581"},
+    {file = "markdown2-2.5.2.tar.gz", hash = "sha256:3ac02226a901c4b2f6fc21dbd17c26d118d2c25bcbb28cee093a1f8b5c46f3f1"},
+]
+
+[package.extras]
+all = ["latex2mathml", "pygments (>=2.7.3)", "wavedrom"]
+code-syntax-highlighting = ["pygments (>=2.7.3)"]
+latex = ["latex2mathml"]
+wavedrom = ["wavedrom"]
+
+[[package]]
 name = "mdurl"
 version = "0.1.2"
 description = "Markdown URL utilities"
@@ -421,6 +449,34 @@ typing-extensions = ">=4.11,<5"
 
 [package.extras]
 datalib = ["numpy (>=1)", "pandas (>=1.2.3)", "pandas-stubs (>=1.1.0.11)"]
+
+[[package]]
+name = "portkey-ai"
+version = "1.9.9"
+description = "Python client library for the Portkey API"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "portkey_ai-1.9.9-py3-none-any.whl", hash = "sha256:b771478c258497dd932ba61f4d551cf42f8aba64d268427785101167a6350a64"},
+    {file = "portkey_ai-1.9.9.tar.gz", hash = "sha256:765361ed6d004e32403b8500bef5e8decaa6213867e26d62ea778b1ebfe939e1"},
+]
+
+[package.dependencies]
+anyio = ">=3.5.0,<5"
+cached-property = "*"
+distro = ">=1.7.0,<2"
+httpx = "*"
+jiter = ">=0.4.0,<1"
+pydantic = ">=1.10.8"
+sniffio = "*"
+tqdm = ">4"
+types-requests = "*"
+typing_extensions = ">=4.7.1,<5.0"
+
+[package.extras]
+dev = ["black (==23.7.0)", "mypy (>=0.991,<2.0)", "pytest (==7.4.2)", "pytest-asyncio (==0.23.5)", "python-dotenv (==1.0.0)", "ruff (==0.0.292)"]
+langchain-callback = ["langchain-core"]
+llama-index-callback = ["llama-index"]
 
 [[package]]
 name = "prompt-toolkit"
@@ -840,6 +896,20 @@ slack = ["slack-sdk"]
 telegram = ["requests"]
 
 [[package]]
+name = "types-requests"
+version = "2.32.0.20241016"
+description = "Typing stubs for requests"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "types-requests-2.32.0.20241016.tar.gz", hash = "sha256:0d9cad2f27515d0e3e3da7134a1b6f28fb97129d86b867f24d9c726452634d95"},
+    {file = "types_requests-2.32.0.20241016-py3-none-any.whl", hash = "sha256:4195d62d6d3e043a4eaaf08ff8a62184584d2e8684e9d2aa178c7915a7da3747"},
+]
+
+[package.dependencies]
+urllib3 = ">=2"
+
+[[package]]
 name = "typing-extensions"
 version = "4.12.2"
 description = "Backported and Experimental Type Hints for Python 3.8+"
@@ -880,5 +950,5 @@ files = [
 
 [metadata]
 lock-version = "2.0"
-python-versions = ">=3.9"
-content-hash = "803e3cd9d30c156de613b4e9515718aa6ce8330807458c1373bf832548160c9d"
+python-versions = ">=3.9,<4"
+content-hash = "59f375fcbaac14849c1460bdb91ff0690129e4aa25fd10c3f5bd7411e6b88f28"

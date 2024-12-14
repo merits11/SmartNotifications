@@ -1,6 +1,7 @@
 import functools
 
 from openai import OpenAI
+from portkey_ai import Portkey
 
 from llm.conversation import Conversation
 from utils.config import read_config
@@ -17,8 +18,22 @@ def get_openai_client():
 
 
 @functools.lru_cache(maxsize=1)
+def get_portkey_client():
+    config = read_config()
+    return Portkey(
+        base_url=config.base_url,
+        api_key=config.portkey_api_key,
+        virtual_key=config.portkey_virtual_key,
+    )
+
+
+@functools.lru_cache(maxsize=1)
 def get_llm_client():
-    return Client()
+    config = read_config()
+    if config.client == "portkey":
+        return Client(client=get_portkey_client())
+    else:
+        return Client(client=get_openai_client())
 
 
 class OpenAIAPIError(Exception):
@@ -28,7 +43,7 @@ class OpenAIAPIError(Exception):
 
 class Client:
 
-    def __init__(self, model=None, client=get_openai_client()) -> None:
+    def __init__(self, model=None, client=None) -> None:
         self.client = client
         self.model = model if model else DEFAULT_MODEL
 

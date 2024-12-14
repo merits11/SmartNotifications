@@ -201,8 +201,7 @@ def handle_commands(conversation, instruction) -> str:
         console.print(f"[bold blue]Conversation saved to:[/bold blue] {save_path / file_name}")
         return ""
 
-    if instruction.startswith("/model"):
-        parts = instruction.split(" ")
+    if parts[0].startswith("/model"):
         if len(parts) > 1:
             model = parts[1]
             conversation.model = model
@@ -211,13 +210,26 @@ def handle_commands(conversation, instruction) -> str:
             console.print("[red]Invalid model command![/red]")
         return ""
 
-    if instruction == "/copy":
+    if parts[0] == "/copy":
         if conversation.messages:
             last_message = conversation.messages[-1]["content"]
             pyperclip.copy(last_message)
             console.print("[bold blue]Last message copied to clipboard![/bold blue]")
         else:
             console.print("[red]No messages to copy![/red]")
+        return ""
+
+    if parts[0] == "/view":
+        save_path = Path(os.getenv("HOME")) / "Documents" / "Smart" / "Temp"
+        save_path.mkdir(parents=True, exist_ok=True)
+        file_path = save_path / f"{conversation.started_at.strftime('%Y-%m-%d-%H-%M-%S')}.html"
+        last_n = 1
+        if len(parts) > 1 and parts[1].isdigit():
+            last_n = int(parts[1])
+        with open(file_path, 'w') as file:
+            file.write(conversation.as_html(last_n=last_n))
+        console.print(f"Opening file: file://{file_path}")
+        webbrowser.open(f"file://{file_path}")
         return ""
 
     return instruction

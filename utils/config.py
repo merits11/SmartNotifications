@@ -12,6 +12,11 @@ class SmartConfig:
         self.chat_id = self.config.get('telegram_chat_id')
         self.important_chat_id = self.config.get('telegram_important_chat_id')
         self.model = self.config.get('model')
+        self.client = self.config.get('client')
+        self.base_url = self.config.get('base_url')
+        # Portkey:
+        self.portkey_api_key = self.config.get('portkey_api_key')
+        self.portkey_virtual_key = self.config.get('portkey_virtual_key')
 
     @classmethod
     def from_file(cls, config_path: Path) -> 'SmartConfig':
