@@ -9,17 +9,11 @@ from utils.config import read_config
 DEFAULT_MODEL = "gpt-4o-mini"
 
 
-@functools.lru_cache(maxsize=1)
-def get_openai_client():
-    config = read_config()
-    if config.model.startswith("grok-"):
-        return OpenAI(api_key=config.llm_token, base_url="https://api.x.ai/v1")
-    return OpenAI(api_key=config.llm_token)
+def _get_openai_client(config):
+    return OpenAI(api_key=config.llm_token, base_url=config.base_url or "https://api.openai.com/v1")
 
 
-@functools.lru_cache(maxsize=1)
-def get_portkey_client():
-    config = read_config()
+def _get_portkey_client(config):
     return Portkey(
         base_url=config.base_url,
         api_key=config.portkey_api_key,
@@ -31,9 +25,25 @@ def get_portkey_client():
 def get_llm_client():
     config = read_config()
     if config.client == "portkey":
-        return Client(client=get_portkey_client())
+        return Client(client=_get_portkey_client(config))
     else:
-        return Client(client=get_openai_client())
+        return Client(client=_get_openai_client(config))
+
+
+def apply_profile(profile):
+    config = read_config()
+    if profile not in config.profiles:
+        return False
+    config.apply_profile(profile)
+    get_llm_client().reset_client(get_underlying_client(config))
+    return True
+
+
+def get_underlying_client(config):
+    if config.client == "portkey":
+        return _get_portkey_client(config)
+    else:
+        return _get_openai_client(config)
 
 
 class OpenAIAPIError(Exception):
@@ -54,6 +64,9 @@ class Client:
             raise OpenAIAPIError(f"Error from OpenAI API: {response['error']['message']}")
 
         return response
+
+    def reset_client(self, new_client):
+        self.client = new_client
 
     def get_chat_completion(self, messages, model=None, tools=None):
         our_model = model if model else self.model

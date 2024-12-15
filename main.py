@@ -9,13 +9,15 @@ from pathlib import Path
 
 import click
 import pyperclip
+from pygments.lexer import default
 from rich.console import Console
 from rich.markdown import Markdown
 
-from llm.client import get_llm_client
+from llm.client import get_llm_client, apply_profile
 from llm.conversation import Conversation
 from llm.prompts import build_command_generation_prompt, build_emoji_generation_prompt, build_link_generation_prompt, \
     build_generic_prompt, build_text_enhancement_prompt
+from utils.config import read_config
 from utils.helper import get_shell_and_rc, read_file, sanitize_shell_command
 from utils.input import user_input
 
@@ -36,10 +38,16 @@ system_prompt_files_key = 'system_prompt_files'
 @click.group()
 @click.option('-s', '--system-prompt-file', type=str, default=[], multiple=True,
               help='Path to the system prompt file')
+@click.option('-p', '--profile', type=str, help='Profile to apply', default=None)
 @click.pass_context
-def cli(ctx, system_prompt_file):
+def cli(ctx, system_prompt_file, profile):
     ctx.ensure_object(dict)
     ctx.obj[system_prompt_files_key] = system_prompt_file
+    if profile:
+        if apply_profile(profile):
+            console.print(f"[bold green]Profile applied: {profile}[/bold green]")
+        else:
+            console.print(f"[red]Profile not found: {profile}, using default[/red]")
 
 
 # New chat command with continuous loop
@@ -201,13 +209,25 @@ def handle_commands(conversation, instruction) -> str:
         console.print(f"[bold blue]Conversation saved to:[/bold blue] {save_path / file_name}")
         return ""
 
+    if parts[0].startswith("/profile"):
+        if len(parts) > 1:
+            profile = parts[1]
+            if apply_profile(profile):
+                conversation.model = read_config().model
+                console.print(f"[bold blue]Profile set to:[/bold blue] {profile}, model: {conversation.model}")
+            else:
+                console.print(f"[red]Profile not found: {profile}[/red]")
+        else:
+            console.print(f"[bold blue]You are currently using profile:[/bold blue] {read_config().get_current_profile()}")
+        return ""
+
     if parts[0].startswith("/model"):
         if len(parts) > 1:
             model = parts[1]
             conversation.model = model
             console.print(f"[bold blue]Model set to:[/bold blue] {model}")
         else:
-            console.print("[red]Invalid model command![/red]")
+            console.print(f"[bold blue]You are currently using model:[/bold blue] {conversation.model}")
         return ""
 
     if parts[0] == "/copy":
@@ -330,7 +350,8 @@ def run_llm_streaming(conversation):
 
     save_conversation(conversation, last_conversation_path)  # Save the conversation to a file
     # Final message after the stream ends
-    console.print(f"\n[green]Stream complete. Index: {len(conversation.messages)-1} Tokens: {conversation.get_token_usage()}[/green]")
+    console.print(
+        f"\n[green]Stream complete. Index: {len(conversation.messages) - 1} Tokens: {conversation.get_token_usage()}[/green]")
 
 
 def save_conversation(conversation, file_path):
@@ -352,7 +373,6 @@ def load_system_prompt(ctx, default_system_prompt):
                 console.print(f"[red]System prompt file not found at path: {system_prompt_file}[/red]")
                 continue
     return [default_system_prompt] if not system_prompts else system_prompts
-
 
 
 if __name__ == "__main__":
