@@ -46,6 +46,10 @@ class Conversation:
             return  # No system messages for o1 models
         self.messages.append({"role": "system", "content": content})
 
+    def delete_message(self, index: int) -> None:
+        if 0 <= index < len(self.messages):
+            self.messages[index]["content"] = "[DELETED]"
+
     def get_conversation(self):
         return self.messages
 
@@ -92,3 +96,4 @@ class Conversation:
         </body>
         </html>
         """
+

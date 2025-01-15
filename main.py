@@ -201,6 +201,19 @@ def handle_commands(conversation, instruction) -> str:
             console.print("[bold blue]Last message copied to clipboard![/bold blue]")
         return ""
 
+    if parts[0] in ['/del', '/delete']:
+        if len(parts) > 1:
+            if parts[1].isdigit() and 0 <= int(parts[1]) < len(conversation.messages):
+                index = int(parts[1])
+                conversation.delete_message(index)
+                console.print(f"[bold blue]Message at index {index} deleted![/bold blue]")
+            else:
+                console.print(f"[red]Invalid index, allowed range [0, {len(conversation.messages)-1}]![/red]")
+        else:
+            conversation.delete_message(len(conversation.messages)-1)
+            console.print("[bold blue]Last message deleted![/bold blue]")
+        return ""
+
     if parts[0] == "/save":
         save_path = Path(os.getenv("HOME")) / "Documents" / "Smart" / "Conversations"
         save_path.mkdir(parents=True, exist_ok=True)
