@@ -208,9 +208,9 @@ def handle_commands(conversation, instruction) -> str:
                 conversation.delete_message(index)
                 console.print(f"[bold blue]Message at index {index} deleted![/bold blue]")
             else:
-                console.print(f"[red]Invalid index, allowed range [0, {len(conversation.messages)-1}]![/red]")
+                console.print(f"[red]Invalid index, allowed range [0, {len(conversation.messages) - 1}]![/red]")
         else:
-            conversation.delete_message(len(conversation.messages)-1)
+            conversation.delete_message(len(conversation.messages) - 1)
             console.print("[bold blue]Last message deleted![/bold blue]")
         return ""
 
@@ -231,7 +231,8 @@ def handle_commands(conversation, instruction) -> str:
             else:
                 console.print(f"[red]Profile not found: {profile}[/red]")
         else:
-            console.print(f"[bold blue]You are currently using profile:[/bold blue] {read_config().get_current_profile()}")
+            console.print(
+                f"[bold blue]You are currently using profile:[/bold blue] {read_config().get_current_profile()}")
         return ""
 
     if parts[0].startswith("/model"):
@@ -257,8 +258,11 @@ def handle_commands(conversation, instruction) -> str:
         save_path.mkdir(parents=True, exist_ok=True)
         file_path = save_path / f"{conversation.started_at.strftime('%Y-%m-%d-%H-%M-%S')}.html"
         last_n = 1
-        if len(parts) > 1 and parts[1].isdigit():
-            last_n = int(parts[1])
+        if len(parts) > 1:
+            if parts[1] == "all":
+                last_n = len(conversation.messages)
+            elif parts[1].isdigit():
+                last_n = int(parts[1])
         with open(file_path, 'w') as file:
             file.write(conversation.as_html(last_n=last_n))
         console.print(f"Opening file: file://{file_path}")
