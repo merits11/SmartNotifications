@@ -32,3 +32,9 @@ def sanitize_shell_command(content: str) -> str:
         return lines[1]
     else:
         raise ValueError(f"response is not parsable: {content}")
+
+
+def maybe_load_content(file_path_or_str: str|None) -> str:
+    if file_path_or_str and file_path_or_str.startswith("file://"):
+        return read_file(file_path_or_str[7:])
+    return file_path_or_str

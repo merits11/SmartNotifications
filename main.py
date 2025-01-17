@@ -9,7 +9,6 @@ from pathlib import Path
 
 import click
 import pyperclip
-from pygments.lexer import default
 from rich.console import Console
 from rich.markdown import Markdown
 
@@ -18,7 +17,7 @@ from llm.conversation import Conversation
 from llm.prompts import build_command_generation_prompt, build_emoji_generation_prompt, build_link_generation_prompt, \
     build_generic_prompt, build_text_enhancement_prompt
 from utils.config import read_config
-from utils.helper import get_shell_and_rc, read_file, sanitize_shell_command
+from utils.helper import get_shell_and_rc, read_file, sanitize_shell_command, maybe_load_content
 from utils.input import user_input
 
 console = Console()
@@ -55,6 +54,7 @@ def cli(ctx, system_prompt_file, profile):
 @click.option('-i', '--instruction', type=str, help='Provide the initial instruction for chat')
 @click.pass_context
 def chat(ctx, instruction):
+    instruction = maybe_load_content(instruction)
     conversation = Conversation()
     conversation.add_system_message(load_system_prompt(ctx, build_generic_prompt()))
 
@@ -81,6 +81,7 @@ def chat(ctx, instruction):
 @click.option('-i', '--instruction', type=str, help='Provide the instruction for chat completion')
 @click.pass_context
 def complete(ctx, instruction):
+    instruction = maybe_load_content(instruction)
     if not instruction:
         instruction = user_input(f"\n{brand_emoji} What would you like to ask about?")
     conversation = Conversation()
@@ -101,6 +102,7 @@ def complete(ctx, instruction):
 @click.option('--kb', type=str, default="", help='Knowledge base file path')
 @click.pass_context
 def run(ctx, instruction, extra_args, kb):
+    instruction = maybe_load_content(instruction)
     if not instruction:
         instruction = user_input(f"\n{brand_emoji} What shall I run, your highness:")
     conversation = Conversation()
@@ -125,6 +127,7 @@ def run(ctx, instruction, extra_args, kb):
 @click.option('--kb', type=str, default="", help='Knowledge base file path')
 @click.pass_context
 def goto(ctx, instruction, kb):
+    instruction = maybe_load_content(instruction)
     if not instruction:
         instruction = user_input(f"\n{brand_emoji} Describe your link:")
     conversation = Conversation()
@@ -138,6 +141,7 @@ def goto(ctx, instruction, kb):
 @click.option('-i', '--instruction', type=str, help='Use natural language to describe what you want to do')
 @click.pass_context
 def emoji(ctx, instruction):
+    instruction = maybe_load_content(instruction)
     if not instruction:
         instruction = user_input(f"\n{brand_emoji} Describe your emoji:")
     conversation = Conversation()
@@ -155,6 +159,7 @@ def emoji(ctx, instruction):
 @click.option('-t', '--text', type=str, help='Text to enhance')
 @click.pass_context
 def enhance(ctx, instruction, text):
+    instruction = maybe_load_content(instruction)
     conversation = Conversation()
     if not instruction:
         instruction = user_input(f"\n{brand_emoji} Any specific instruction:").strip()
@@ -257,7 +262,7 @@ def handle_commands(conversation, instruction) -> str:
         save_path = Path(os.getenv("HOME")) / "Documents" / "Smart" / "Temp"
         save_path.mkdir(parents=True, exist_ok=True)
         file_path = save_path / f"{conversation.started_at.strftime('%Y-%m-%d-%H-%M-%S')}.html"
-        last_n = 1
+        last_n = 2 # 1 Q/A pair
         if len(parts) > 1:
             if parts[1] == "all":
                 last_n = len(conversation.messages)
