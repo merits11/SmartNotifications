@@ -15,7 +15,7 @@ logging.basicConfig(
 
 async def main():
     config = read_config()
-    token, chat_id, chat_id_2 = config.telegram_token, config.chat_id, config.important_chat_id
+    token, chat_id, chat_id_2 = config.telegram_token, config.telegram_chat_id, config.telegram_important_chat_id
 
     # Create a TelegramMessenger instance
     telegram_messenger = TelegramMessenger(token=token, chat_id=chat_id, important_chat_id=chat_id_2)
