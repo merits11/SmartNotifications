@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+from enum import Enum
 from os import environ
 from pathlib import Path
 
 
+class ContentLoadType(Enum):
+    NORMAL = "normal"
+    PRELOAD = "preload"
+    FILE = "file"
+
+
 def get_shell_and_rc():
-    shell = environ.get("SHELL", '/bin/zsh')
-    if 'zsh' in shell:
+    shell = environ.get("SHELL", "/bin/zsh")
+    if "zsh" in shell:
         return shell, f"{environ.get('HOME')}/.zshrc"
-    raise ValueError(f'Not yet implemented for shell {shell}')
+    raise ValueError(f"Not yet implemented for shell {shell}")
 
 
 def read_file(file_path: str | Path, default: str = "") -> str:
@@ -25,7 +32,7 @@ def read_file(file_path: str | Path, default: str = "") -> str:
 
 
 def sanitize_shell_command(content: str) -> str:
-    lines = content.split('\n')
+    lines = content.split("\n")
     if len(lines) == 1:
         return content
     elif len(lines) == 3:
@@ -34,7 +41,13 @@ def sanitize_shell_command(content: str) -> str:
         raise ValueError(f"response is not parsable: {content}")
 
 
-def maybe_load_content(file_path_or_str: str|None) -> str:
-    if file_path_or_str and file_path_or_str.startswith("file://"):
-        return read_file(file_path_or_str[7:])
-    return file_path_or_str
+def maybe_load_content(file_path_or_str: str | None) -> tuple[ContentLoadType, str]:
+    if not file_path_or_str:
+        return ContentLoadType.NORMAL, ""
+
+    if file_path_or_str.startswith("preload:file://"):
+        return ContentLoadType.PRELOAD, read_file(file_path_or_str[15:])
+    if file_path_or_str.startswith("file://"):
+        return ContentLoadType.FILE, read_file(file_path_or_str[7:])
+
+    return ContentLoadType.NORMAL, file_path_or_str

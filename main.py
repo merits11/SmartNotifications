@@ -14,10 +14,21 @@ from rich.markdown import Markdown
 
 from llm.client import get_llm_client, apply_profile
 from llm.conversation import Conversation
-from llm.prompts import build_command_generation_prompt, build_emoji_generation_prompt, build_link_generation_prompt, \
-    build_generic_prompt, build_text_enhancement_prompt
+from llm.prompts import (
+    build_command_generation_prompt,
+    build_emoji_generation_prompt,
+    build_link_generation_prompt,
+    build_generic_prompt,
+    build_text_enhancement_prompt,
+)
 from utils.config import read_config
-from utils.helper import get_shell_and_rc, read_file, sanitize_shell_command, maybe_load_content
+from utils.helper import (
+    get_shell_and_rc,
+    read_file,
+    sanitize_shell_command,
+    maybe_load_content,
+    ContentLoadType,
+)
 from utils.input import user_input
 
 console = Console()
@@ -30,14 +41,20 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 brand_emoji = "🧐"
 
-last_conversation_path = '/tmp/smart-conversation.json'
-system_prompt_files_key = 'system_prompt_files'
+last_conversation_path = "/tmp/smart-conversation.json"
+system_prompt_files_key = "system_prompt_files"
 
 
 @click.group()
-@click.option('-s', '--system-prompt-file', type=str, default=[], multiple=True,
-              help='Path to the system prompt file')
-@click.option('-p', '--profile', type=str, help='Profile to apply', default=None)
+@click.option(
+    "-s",
+    "--system-prompt-file",
+    type=str,
+    default=[],
+    multiple=True,
+    help="Path to the system prompt file",
+)
+@click.option("-p", "--profile", type=str, help="Profile to apply", default=None)
 @click.pass_context
 def cli(ctx, system_prompt_file, profile):
     ctx.ensure_object(dict)
@@ -51,37 +68,51 @@ def cli(ctx, system_prompt_file, profile):
 
 # New chat command with continuous loop
 @cli.command()
-@click.option('-i', '--instruction', type=str, help='Provide the initial instruction for chat')
+@click.option(
+    "-i", "--instruction", type=str, help="Provide the initial instruction for chat"
+)
 @click.pass_context
 def chat(ctx, instruction):
-    instruction = maybe_load_content(instruction)
+    load_type, instruction = maybe_load_content(instruction)
     conversation = Conversation()
     conversation.add_system_message(load_system_prompt(ctx, build_generic_prompt()))
 
     # If there's an initial instruction, run it
     if instruction:
         conversation.add_user_message(instruction)
-        run_llm_streaming(conversation)
+        if load_type == ContentLoadType.PRELOAD:
+            conversation.add_assistant_message("Okay.")
+            console.print("[bold blue]Content preloaded![/bold blue]")
+        else:
+            run_llm_streaming(conversation)
 
     # Start continuous loop for follow-up instructions
     while True:
-        instruction = user_input(f"\n{brand_emoji} What would you like to chat about? Type /q to quit: ")
+        instruction = user_input(
+            f"\n{brand_emoji} What would you like to chat about? Type /q to quit: "
+        )
+        load_type, instruction = maybe_load_content(instruction)
         instruction = handle_commands(conversation, instruction)
         if not instruction:
             continue
 
         # Add the user instruction to the conversation
         conversation.add_user_message(instruction)
-
-        # Process the user's instruction with the LLM
-        run_llm_streaming(conversation)
+        if load_type == ContentLoadType.PRELOAD:
+            conversation.add_assistant_message("Okay.")
+            console.print("[bold blue]Content preloaded![/bold blue]")
+        else:
+            # Process the user's instruction with the LLM
+            run_llm_streaming(conversation)
 
 
 @cli.command()
-@click.option('-i', '--instruction', type=str, help='Provide the instruction for chat completion')
+@click.option(
+    "-i", "--instruction", type=str, help="Provide the instruction for chat completion"
+)
 @click.pass_context
 def complete(ctx, instruction):
-    instruction = maybe_load_content(instruction)
+    _, instruction = maybe_load_content(instruction)
     if not instruction:
         instruction = user_input(f"\n{brand_emoji} What would you like to ask about?")
     conversation = Conversation()
@@ -97,12 +128,17 @@ def complete(ctx, instruction):
 
 
 @cli.command()
-@click.option('-i', '--instruction', type=str, help='Use natural language to describe what you want to do')
-@click.argument('extra_args', nargs=-1)
-@click.option('--kb', type=str, default="", help='Knowledge base file path')
+@click.option(
+    "-i",
+    "--instruction",
+    type=str,
+    help="Use natural language to describe what you want to do",
+)
+@click.argument("extra_args", nargs=-1)
+@click.option("--kb", type=str, default="", help="Knowledge base file path")
 @click.pass_context
 def run(ctx, instruction, extra_args, kb):
-    instruction = maybe_load_content(instruction)
+    _, instruction = maybe_load_content(instruction)
     if not instruction:
         instruction = user_input(f"\n{brand_emoji} What shall I run, your highness:")
     conversation = Conversation()
@@ -110,11 +146,14 @@ def run(ctx, instruction, extra_args, kb):
     system_prompt = build_command_generation_prompt(kb_content)
     conversation.add_system_message(load_system_prompt(ctx, system_prompt))
     conversation.add_user_message(
-        f"Current directory: \"{Path.cwd()}\"\n"
+        f'Current directory: "{Path.cwd()}"\n'
         f"Current shell: \"{environ.get('SHELL')}\"\n"
-        f"Current user: \"{environ.get('USER')}\"")
+        f"Current user: \"{environ.get('USER')}\""
+    )
     if extra_args:
-        conversation.add_user_message(f"Here are the file arguments user provided: {extra_args}")
+        conversation.add_user_message(
+            f"Here are the file arguments user provided: {extra_args}"
+        )
     while True:
         instruction = handle_commands(conversation, instruction)
         if instruction:
@@ -123,11 +162,16 @@ def run(ctx, instruction, extra_args, kb):
 
 
 @cli.command()
-@click.option('-i', '--instruction', type=str, help='Use natural language to describe what you want to do')
-@click.option('--kb', type=str, default="", help='Knowledge base file path')
+@click.option(
+    "-i",
+    "--instruction",
+    type=str,
+    help="Use natural language to describe what you want to do",
+)
+@click.option("--kb", type=str, default="", help="Knowledge base file path")
 @click.pass_context
 def goto(ctx, instruction, kb):
-    instruction = maybe_load_content(instruction)
+    _, instruction = maybe_load_content(instruction)
     if not instruction:
         instruction = user_input(f"\n{brand_emoji} Describe your link:")
     conversation = Conversation()
@@ -138,10 +182,15 @@ def goto(ctx, instruction, kb):
 
 
 @cli.command()
-@click.option('-i', '--instruction', type=str, help='Use natural language to describe what you want to do')
+@click.option(
+    "-i",
+    "--instruction",
+    type=str,
+    help="Use natural language to describe what you want to do",
+)
 @click.pass_context
 def emoji(ctx, instruction):
-    instruction = maybe_load_content(instruction)
+    _, instruction = maybe_load_content(instruction)
     if not instruction:
         instruction = user_input(f"\n{brand_emoji} Describe your emoji:")
     conversation = Conversation()
@@ -155,11 +204,17 @@ def emoji(ctx, instruction):
 
 
 @cli.command()
-@click.option('-i', '--instruction', type=str, default="", help='Specific instruction for the text enhancement')
-@click.option('-t', '--text', type=str, help='Text to enhance')
+@click.option(
+    "-i",
+    "--instruction",
+    type=str,
+    default="",
+    help="Specific instruction for the text enhancement",
+)
+@click.option("-t", "--text", type=str, help="Text to enhance")
 @click.pass_context
 def enhance(ctx, instruction, text):
-    instruction = maybe_load_content(instruction)
+    _, instruction = maybe_load_content(instruction)
     conversation = Conversation()
     if not instruction:
         instruction = user_input(f"\n{brand_emoji} Any specific instruction:").strip()
@@ -183,22 +238,28 @@ def handle_commands(conversation, instruction) -> str:
         console.print("[red]Goodbye![/red] Exiting chat.")
         sys.exit(0)
 
-    if parts[0] in ['/pb', '/paste']:
+    if parts[0] in ["/pb", "/paste"]:
         content = pyperclip.paste()
         if not content:
             console.print("[red]No content in clipboard![/red]")
             return True
         conversation.add_user_message("Save this for context:\n\n" + content)
         conversation.add_assistant_message("Okay.")
-        console.print(f"[bold blue]{len(content)} characters saved for context![/bold blue]")
+        console.print(
+            f"[bold blue]{len(content)} characters saved for context![/bold blue]"
+        )
         return ""
 
-    if parts[0] in ['/cp', '/copy']:
+    if parts[0] in ["/cp", "/copy"]:
         if len(parts) > 1:
-            if parts[1].isdigit() and -len(conversation.messages) <= int(parts[1]) < len(conversation.messages):
+            if parts[1].isdigit() and -len(conversation.messages) <= int(
+                parts[1]
+            ) < len(conversation.messages):
                 index = int(parts[1])
                 pyperclip.copy(conversation.messages[index]["content"])
-                console.print(f"[bold blue]Message at index {index} copied to clipboard![/bold blue]")
+                console.print(
+                    f"[bold blue]Message at index {index} copied to clipboard![/bold blue]"
+                )
             else:
                 console.print("[red]Invalid index![/red]")
         else:
@@ -206,14 +267,18 @@ def handle_commands(conversation, instruction) -> str:
             console.print("[bold blue]Last message copied to clipboard![/bold blue]")
         return ""
 
-    if parts[0] in ['/del', '/delete']:
+    if parts[0] in ["/del", "/delete"]:
         if len(parts) > 1:
             if parts[1].isdigit() and 0 <= int(parts[1]) < len(conversation.messages):
                 index = int(parts[1])
                 conversation.delete_message(index)
-                console.print(f"[bold blue]Message at index {index} deleted![/bold blue]")
+                console.print(
+                    f"[bold blue]Message at index {index} deleted![/bold blue]"
+                )
             else:
-                console.print(f"[red]Invalid index, allowed range [0, {len(conversation.messages) - 1}]![/red]")
+                console.print(
+                    f"[red]Invalid index, allowed range [0, {len(conversation.messages) - 1}]![/red]"
+                )
         else:
             conversation.delete_message(len(conversation.messages) - 1)
             console.print("[bold blue]Last message deleted![/bold blue]")
@@ -224,7 +289,9 @@ def handle_commands(conversation, instruction) -> str:
         save_path.mkdir(parents=True, exist_ok=True)
         file_name = f"{conversation.started_at.strftime('%Y-%m-%d-%H-%M-%S')}.json"
         save_conversation(conversation, save_path / file_name)
-        console.print(f"[bold blue]Conversation saved to:[/bold blue] {save_path / file_name}")
+        console.print(
+            f"[bold blue]Conversation saved to:[/bold blue] {save_path / file_name}"
+        )
         return ""
 
     if parts[0].startswith("/profile"):
@@ -232,12 +299,15 @@ def handle_commands(conversation, instruction) -> str:
             profile = parts[1]
             if apply_profile(profile):
                 conversation.model = read_config().model
-                console.print(f"[bold blue]Profile set to:[/bold blue] {profile}, model: {conversation.model}")
+                console.print(
+                    f"[bold blue]Profile set to:[/bold blue] {profile}, model: {conversation.model}"
+                )
             else:
                 console.print(f"[red]Profile not found: {profile}[/red]")
         else:
             console.print(
-                f"[bold blue]You are currently using profile:[/bold blue] {read_config().get_current_profile()}")
+                f"[bold blue]You are currently using profile:[/bold blue] {read_config().get_current_profile()}"
+            )
         return ""
 
     if parts[0].startswith("/model"):
@@ -246,7 +316,9 @@ def handle_commands(conversation, instruction) -> str:
             conversation.model = model
             console.print(f"[bold blue]Model set to:[/bold blue] {model}")
         else:
-            console.print(f"[bold blue]You are currently using model:[/bold blue] {conversation.model}")
+            console.print(
+                f"[bold blue]You are currently using model:[/bold blue] {conversation.model}"
+            )
         return ""
 
     if parts[0] == "/copy":
@@ -261,14 +333,16 @@ def handle_commands(conversation, instruction) -> str:
     if parts[0] == "/view":
         save_path = Path(os.getenv("HOME")) / "Documents" / "Smart" / "Temp"
         save_path.mkdir(parents=True, exist_ok=True)
-        file_path = save_path / f"{conversation.started_at.strftime('%Y-%m-%d-%H-%M-%S')}.html"
-        last_n = 2 # 1 Q/A pair
+        file_path = (
+            save_path / f"{conversation.started_at.strftime('%Y-%m-%d-%H-%M-%S')}.html"
+        )
+        last_n = 2  # 1 Q/A pair
         if len(parts) > 1:
             if parts[1] == "all":
                 last_n = len(conversation.messages)
             elif parts[1].isdigit():
                 last_n = int(parts[1])
-        with open(file_path, 'w') as file:
+        with open(file_path, "w") as file:
             file.write(conversation.as_html(last_n=last_n))
         console.print(f"Opening file: file://{file_path}")
         webbrowser.open(f"file://{file_path}")
@@ -305,7 +379,9 @@ def goto_link(ctx, instruction, kb, conversation):
     for _ in range(3):
         link = run_llm(conversation)
         if not link or not link.startswith("https://"):
-            conversation.add_user_message(f"Invalid link. It should start with 'https://'. Please regenerate!")
+            conversation.add_user_message(
+                f"Invalid link. It should start with 'https://'. Please regenerate!"
+            )
         else:
             break
     console.print(f"[bold blue]Opening link:[/bold blue] [underline]{link}[/underline]")
@@ -319,17 +395,21 @@ def run_action(action, conversation):
     if action.startswith("!"):
         edited_command = action[1:]
         conversation.add_user_message(f"User directly ran `{edited_command}`")
-    elif action.strip() in ["/last", ':last']:
+    elif action.strip() in ["/last", ":last"]:
         last_command = conversation.get_metadata("last_command")
         edited_command = user_input(f"Running this command?\n", default=last_command)
     else:
         if action == "/regenerate":
-            conversation.add_user_message(f"User does not like the command, regenerate!")
+            conversation.add_user_message(
+                f"User does not like the command, regenerate!"
+            )
         else:
             conversation.add_user_message(f"User follows up: {action}")
         content = run_llm(conversation)
         command_from_llm = sanitize_shell_command(content)
-        edited_command = user_input(f"Running this command?\n", default=command_from_llm)
+        edited_command = user_input(
+            f"Running this command?\n", default=command_from_llm
+        )
     if not edited_command:
         console.print("[red]No command to run![/red]")
         return
@@ -341,13 +421,16 @@ def run_action(action, conversation):
         return
     else:
         shell, rc = get_shell_and_rc()
-        final_command = f'source {rc} && {edited_command}'
+        final_command = f"source {rc} && {edited_command}"
         result = subprocess.run(final_command, shell=True, executable=shell)
         conversation.add_metadata("last_command", edited_command)
         status_color = "green" if result.returncode == 0 else "red"
         console.print(
-            f"\n[bold cyan]Command returned status:[/bold cyan] [bold {status_color}]{result.returncode}[/bold {status_color}]")
-        conversation.add_user_message(f"User ran `{edited_command}`, exited with code {result.returncode}")
+            f"\n[bold cyan]Command returned status:[/bold cyan] [bold {status_color}]{result.returncode}[/bold {status_color}]"
+        )
+        conversation.add_user_message(
+            f"User ran `{edited_command}`, exited with code {result.returncode}"
+        )
 
 
 def run_llm(conversation):
@@ -362,23 +445,30 @@ def run_llm_streaming(conversation):
     This function calls the LLM in streaming mode and prints the response as it comes in.
     """
     client = get_llm_client()
-    response_stream = client.converse_stream(conversation)  # Assuming 'converse_stream' for streaming
+    response_stream = client.converse_stream(
+        conversation
+    )  # Assuming 'converse_stream' for streaming
 
     # Iterate over the streaming response
     for chunk in response_stream:
         content_chunk = chunk.content
         if content_chunk:
-            console.print(content_chunk, end='', markup=True)  # Print each part of the response as it's received
+            console.print(
+                content_chunk, end="", markup=True
+            )  # Print each part of the response as it's received
 
-    save_conversation(conversation, last_conversation_path)  # Save the conversation to a file
+    save_conversation(
+        conversation, last_conversation_path
+    )  # Save the conversation to a file
     # Final message after the stream ends
     console.print(
-        f"\n[green]Stream complete. Index: {len(conversation.messages) - 1} Tokens: {conversation.get_token_usage()}[/green]")
+        f"\n[green]Stream complete. Index: {len(conversation.messages) - 1} Tokens: {conversation.get_token_usage()}[/green]"
+    )
 
 
 def save_conversation(conversation, file_path):
     try:
-        with open(file_path, 'w', encoding='utf-8') as json_file:
+        with open(file_path, "w", encoding="utf-8") as json_file:
             json.dump(conversation.to_dict(), json_file, ensure_ascii=False, indent=4)
     except IOError as e:
         console.print(f"[red]Error writing conversation to file: {e}[/red]")
@@ -392,7 +482,9 @@ def load_system_prompt(ctx, default_system_prompt):
             if Path(system_prompt_file).exists():
                 system_prompts.append(Path(system_prompt_file).read_text())
             else:
-                console.print(f"[red]System prompt file not found at path: {system_prompt_file}[/red]")
+                console.print(
+                    f"[red]System prompt file not found at path: {system_prompt_file}[/red]"
+                )
                 continue
     return [default_system_prompt] if not system_prompts else system_prompts
 
