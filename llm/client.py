@@ -1,4 +1,6 @@
 import functools
+import logging
+import json
 
 from openai import OpenAI
 from portkey_ai import Portkey
@@ -8,9 +10,14 @@ from utils.config import read_config
 
 DEFAULT_MODEL = "gpt-4o-mini"
 
+logger = logging.getLogger(__name__)
+
 
 def _get_openai_client(config):
-    return OpenAI(api_key=config.llm_token, base_url=config.base_url or "https://api.openai.com/v1")
+    return OpenAI(
+        api_key=config.llm_token,
+        base_url=config.base_url or "https://api.openai.com/v1",
+    )
 
 
 def _get_portkey_client(config):
@@ -48,6 +55,7 @@ def get_underlying_client(config):
 
 class OpenAIAPIError(Exception):
     """Custom exception for OpenAI API errors."""
+
     pass
 
 
@@ -58,10 +66,16 @@ class Client:
         self.model = model if model else DEFAULT_MODEL
 
     def _call_chat_completion(self, model, messages, tools):
-        response = self.client.chat.completions.create(model=model, messages=messages, tools=tools)
+        # debug the messages being sent
+        logger.debug(f"Sending messages to API: {json.dumps(messages, indent=2)}")
+        response = self.client.chat.completions.create(
+            model=model, messages=messages, tools=tools
+        )
 
-        if 'error' in response:
-            raise OpenAIAPIError(f"Error from OpenAI API: {response['error']['message']}")
+        if "error" in response:
+            raise OpenAIAPIError(
+                f"Error from OpenAI API: {response['error']['message']}"
+            )
 
         return response
 
@@ -91,19 +105,26 @@ class Client:
             Each chunk of the response as it becomes available.
         """
         our_model = conversation.model if conversation.model else self.model
+
         stream = self.client.chat.completions.create(
             model=our_model,
             messages=conversation.messages,
             tools=tools,
-            stream=True  # Enable streaming
+            stream=True,  # Enable streaming
         )
 
         response_text = ""
         for chunk in stream:
-            if 'error' in chunk:
-                raise OpenAIAPIError(f"Error from OpenAI API: {chunk['error']['message']}")
+            if "error" in chunk:
+                raise OpenAIAPIError(
+                    f"Error from OpenAI API: {chunk['error']['message']}"
+                )
 
-            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+            if (
+                chunk.choices
+                and chunk.choices[0].delta
+                and chunk.choices[0].delta.content
+            ):
                 response_text += str(chunk.choices[0].delta.content)
                 yield chunk.choices[0].delta
         conversation.add_assistant_message(response_text)

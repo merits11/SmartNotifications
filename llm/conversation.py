@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import datetime
 import json
+import logging
+from typing import Union, Dict, List
 
 import tiktoken
 from markdown2 import markdown
@@ -9,6 +11,9 @@ from markdown2 import markdown
 from utils.config import read_config
 
 encoding = tiktoken.encoding_for_model("gpt-4o")
+logger = logging.getLogger(__name__)
+
+MessageContent = Union[str, Dict, List[Union[str, Dict]]]
 
 
 class Conversation:
@@ -23,20 +28,16 @@ class Conversation:
         self.extra_data = {}
         self.started_at = datetime.datetime.now()
 
-    def add_message(self, role, content: str | list[str]) -> None:
-        if isinstance(content, list):
-            for item in content:
-                self.add_message(role, item)
-            return
+    def add_message(self, role: str, content: MessageContent) -> None:
         self.messages.append({"role": role, "content": content})
 
-    def add_user_message(self, content: str | list[str]):
+    def add_user_message(self, content: MessageContent):
         self.add_message("user", content)
 
-    def add_assistant_message(self, content: str | list[str]):
+    def add_assistant_message(self, content: MessageContent):
         self.add_message("assistant", content)
 
-    def add_system_message(self, content: str | list[str]) -> None:
+    def add_system_message(self, content: MessageContent) -> None:
         if isinstance(content, list):
             for item in content:
                 self.add_system_message(item)
@@ -70,7 +71,7 @@ class Conversation:
             "started_at": self.started_at.isoformat(),
             "model": self.model,
             "messages": self.messages,
-            "token_usage": self.token_usage
+            "token_usage": self.token_usage,
         }
 
     def as_inner_html(self, last_n: int = 1):
@@ -78,7 +79,9 @@ class Conversation:
         if last_n > len(self.messages):
             last_n = len(self.messages)
         for message in self.messages[-last_n:]:
-            markdown_content += f"**{message['role'].upper()}**\n\n{message['content']}\n\n"
+            markdown_content += (
+                f"**{message['role'].upper()}**\n\n{message['content']}\n\n"
+            )
         # Convert Markdown to HTML
         return markdown(markdown_content)
 
@@ -96,4 +99,3 @@ class Conversation:
         </body>
         </html>
         """
-

@@ -38,6 +38,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - [%(threadName)s] %(message)s",
 )
 logging.getLogger("httpx").setLevel(logging.WARNING)
+logger = logging.getLogger(__name__)
 
 brand_emoji = "🧐"
 
@@ -69,22 +70,48 @@ def cli(ctx, system_prompt_file, profile):
 # New chat command with continuous loop
 @cli.command()
 @click.option(
-    "-i", "--instruction", type=str, help="Provide the initial instruction for chat"
+    "-i",
+    "--instruction",
+    type=str,
+    multiple=True,
+    help="Provide the initial instruction for chat. Can be text or image file path (prefixed with file://)",
 )
 @click.pass_context
 def chat(ctx, instruction):
-    load_type, instruction = maybe_load_content(instruction)
     conversation = Conversation()
     conversation.add_system_message(load_system_prompt(ctx, build_generic_prompt()))
 
-    # If there's an initial instruction, run it
+    # If there are initial instructions, collect them all first
     if instruction:
-        conversation.add_user_message(instruction)
-        if load_type == ContentLoadType.PRELOAD:
-            conversation.add_assistant_message("Okay.")
-            console.print("[bold blue]Content preloaded![/bold blue]")
-        else:
+        current_content = []
+        for instr in instruction:
+            load_type, processed_instr = maybe_load_content(instr)
+            if processed_instr:
+                if load_type == ContentLoadType.IMAGE:
+                    # Add image to current content array
+                    current_content.append(processed_instr)
+                else:
+                    # If we have accumulated content, add it first
+                    if current_content:
+                        # Always wrap image content in an array
+                        conversation.add_user_message(current_content)
+                        current_content = []
+                    conversation.add_user_message(processed_instr)
+                if load_type == ContentLoadType.PRELOAD:
+                    conversation.add_assistant_message("Okay.")
+
+        # Add any remaining content
+        if current_content:
+            # Always wrap image content in an array
+            conversation.add_user_message(current_content)
+
+        # Run LLM streaming if the last message wasn't from assistant
+        if conversation.messages[-1]["role"] != "assistant":
             run_llm_streaming(conversation)
+        else:
+            console.print(
+                f"[bold blue]Loaded {len(instruction)} instruction(s)![/bold blue]"
+            )
 
     # Start continuous loop for follow-up instructions
     while True:
@@ -97,10 +124,27 @@ def chat(ctx, instruction):
             continue
 
         # Add the user instruction to the conversation
-        conversation.add_user_message(instruction)
+        if load_type == ContentLoadType.IMAGE:
+            # For images, we need to format the message exactly as OpenAI API expects
+            # If the previous message was text, combine them
+            if (
+                conversation.messages
+                and conversation.messages[-1]["role"] == "user"
+                and isinstance(conversation.messages[-1]["content"], str)
+            ):
+                # Combine previous text with image
+                prev_text = conversation.messages[-1]["content"]
+                # Always wrap content in an array
+                new_content = [{"type": "text", "text": prev_text}, instruction]
+                conversation.messages[-1]["content"] = new_content
+            else:
+                conversation.add_user_message([instruction])
+        else:
+            conversation.add_user_message(instruction)
+
         if load_type == ContentLoadType.PRELOAD:
             conversation.add_assistant_message("Okay.")
-            console.print("[bold blue]Content preloaded![/bold blue]")
+            console.print("[bold blue]Instruction loaded![/bold blue]")
         else:
             # Process the user's instruction with the LLM
             run_llm_streaming(conversation)
@@ -108,23 +152,34 @@ def chat(ctx, instruction):
 
 @cli.command()
 @click.option(
-    "-i", "--instruction", type=str, help="Provide the instruction for chat completion"
+    "-i",
+    "--instruction",
+    type=str,
+    multiple=True,
+    help="Provide the instruction for chat completion",
 )
 @click.pass_context
 def complete(ctx, instruction):
-    _, instruction = maybe_load_content(instruction)
-    if not instruction:
-        instruction = user_input(f"\n{brand_emoji} What would you like to ask about?")
     conversation = Conversation()
     conversation.add_system_message(load_system_prompt(ctx, build_generic_prompt()))
-    instruction = handle_commands(conversation, instruction)
-    if not instruction:
-        return
-    conversation.add_user_message(instruction)
-    content = run_llm(conversation)
 
-    # Print the markdown to terminal using rich
-    console.print(Markdown(content))
+    if instruction:
+        for instr in instruction:
+            _, processed_instr = maybe_load_content(instr)
+            if processed_instr:
+                processed_instr = handle_commands(conversation, processed_instr)
+                if processed_instr:
+                    conversation.add_user_message(processed_instr)
+    else:
+        instruction = user_input(f"\n{brand_emoji} What would you like to ask about?")
+        instruction = handle_commands(conversation, instruction)
+        if instruction:
+            conversation.add_user_message(instruction)
+
+    if conversation.messages:
+        content = run_llm(conversation)
+        # Print the markdown to terminal using rich
+        console.print(Markdown(content))
 
 
 @cli.command()
@@ -132,15 +187,13 @@ def complete(ctx, instruction):
     "-i",
     "--instruction",
     type=str,
+    multiple=True,
     help="Use natural language to describe what you want to do",
 )
 @click.argument("extra_args", nargs=-1)
 @click.option("--kb", type=str, default="", help="Knowledge base file path")
 @click.pass_context
 def run(ctx, instruction, extra_args, kb):
-    _, instruction = maybe_load_content(instruction)
-    if not instruction:
-        instruction = user_input(f"\n{brand_emoji} What shall I run, your highness:")
     conversation = Conversation()
     kb_content = read_file(kb)
     system_prompt = build_command_generation_prompt(kb_content)
@@ -154,11 +207,25 @@ def run(ctx, instruction, extra_args, kb):
         conversation.add_user_message(
             f"Here are the file arguments user provided: {extra_args}"
         )
-    while True:
+
+    if instruction:
+        for instr in instruction:
+            _, processed_instr = maybe_load_content(instr)
+            if processed_instr:
+                processed_instr = handle_commands(conversation, processed_instr)
+                if processed_instr:
+                    run_action(processed_instr, conversation)
+    else:
+        instruction = user_input(f"\n{brand_emoji} What shall I run, your highness:")
         instruction = handle_commands(conversation, instruction)
         if instruction:
             run_action(instruction, conversation)
+
+    while True:
         instruction = user_input(f"\n{brand_emoji} What else do you need? /q to quit:")
+        instruction = handle_commands(conversation, instruction)
+        if instruction:
+            run_action(instruction, conversation)
 
 
 @cli.command()
@@ -166,19 +233,43 @@ def run(ctx, instruction, extra_args, kb):
     "-i",
     "--instruction",
     type=str,
+    multiple=True,
     help="Use natural language to describe what you want to do",
 )
 @click.option("--kb", type=str, default="", help="Knowledge base file path")
 @click.pass_context
 def goto(ctx, instruction, kb):
-    _, instruction = maybe_load_content(instruction)
-    if not instruction:
-        instruction = user_input(f"\n{brand_emoji} Describe your link:")
     conversation = Conversation()
-    instruction = handle_commands(conversation, instruction)
-    if not instruction:
-        return
-    goto_link(ctx, instruction, kb, conversation)
+    kb_content = read_file(kb)
+    system_prompt = build_link_generation_prompt(kb_content)
+    conversation.add_system_message(load_system_prompt(ctx, system_prompt))
+
+    if instruction:
+        for instr in instruction:
+            _, processed_instr = maybe_load_content(instr)
+            if processed_instr:
+                processed_instr = handle_commands(conversation, processed_instr)
+                if processed_instr:
+                    conversation.add_user_message(
+                        f"Here is the user input: {processed_instr}"
+                    )
+                    for _ in range(3):
+                        link = run_llm(conversation)
+                        if not link or not link.startswith("https://"):
+                            conversation.add_user_message(
+                                f"Invalid link. It should start with 'https://'. Please regenerate!"
+                            )
+                        else:
+                            break
+                    console.print(
+                        f"[bold blue]Opening link:[/bold blue] [underline]{link}[/underline]"
+                    )
+                    webbrowser.open(link)
+    else:
+        instruction = user_input(f"\n{brand_emoji} Describe your link:")
+        instruction = handle_commands(conversation, instruction)
+        if instruction:
+            goto_link(ctx, instruction, kb, conversation)
 
 
 @cli.command()
@@ -186,21 +277,39 @@ def goto(ctx, instruction, kb):
     "-i",
     "--instruction",
     type=str,
+    multiple=True,
     help="Use natural language to describe what you want to do",
 )
 @click.pass_context
 def emoji(ctx, instruction):
-    _, instruction = maybe_load_content(instruction)
-    if not instruction:
-        instruction = user_input(f"\n{brand_emoji} Describe your emoji:")
     conversation = Conversation()
-    instruction = handle_commands(conversation, instruction)
-    if not instruction:
-        return
-    content = get_emoji(ctx, instruction, conversation)
-    # Copy the enhanced text to clipboard
-    pyperclip.copy(content)  # Copying the content to clipboard
-    console.print("[bold blue]Emoji copied to clipboard![/bold blue]")
+    system_prompt = build_emoji_generation_prompt()
+    conversation.add_system_message(load_system_prompt(ctx, system_prompt))
+
+    if instruction:
+        for instr in instruction:
+            _, processed_instr = maybe_load_content(instr)
+            if processed_instr:
+                processed_instr = handle_commands(conversation, processed_instr)
+                if processed_instr:
+                    conversation.add_user_message(
+                        f"Here is the user input: {processed_instr}"
+                    )
+                    content = run_llm(conversation)
+                    console.print(
+                        f"[bold green]Here is your emoji:[/bold green] {content}"
+                    )
+                    # Copy the emoji to clipboard
+                    pyperclip.copy(content)
+                    console.print("[bold blue]Emoji copied to clipboard![/bold blue]")
+    else:
+        instruction = user_input(f"\n{brand_emoji} Describe your emoji:")
+        instruction = handle_commands(conversation, instruction)
+        if instruction:
+            content = get_emoji(ctx, instruction, conversation)
+            # Copy the emoji to clipboard
+            pyperclip.copy(content)
+            console.print("[bold blue]Emoji copied to clipboard![/bold blue]")
 
 
 @cli.command()
@@ -208,23 +317,47 @@ def emoji(ctx, instruction):
     "-i",
     "--instruction",
     type=str,
-    default="",
+    multiple=True,
+    default=[],
     help="Specific instruction for the text enhancement",
 )
 @click.option("-t", "--text", type=str, help="Text to enhance")
 @click.pass_context
 def enhance(ctx, instruction, text):
-    _, instruction = maybe_load_content(instruction)
     conversation = Conversation()
-    if not instruction:
-        instruction = user_input(f"\n{brand_emoji} Any specific instruction:").strip()
-    instruction = handle_commands(conversation, instruction)
+    system_prompt = build_text_enhancement_prompt()
+    conversation.add_system_message(load_system_prompt(ctx, system_prompt))
+
     if not text:
         text = user_input(f"\n{brand_emoji} What text would you like to enhance:")
-    content = enhance_text(ctx, instruction, text, conversation)
-    # Copy the enhanced text to clipboard
-    pyperclip.copy(content)  # Copying the content to clipboard
-    console.print("[bold blue]Enhanced text copied to clipboard![/bold blue]")
+
+    if instruction:
+        for instr in instruction:
+            _, processed_instr = maybe_load_content(instr)
+            if processed_instr:
+                processed_instr = handle_commands(conversation, processed_instr)
+                if processed_instr:
+                    conversation.add_user_message(
+                        f"Here is the user instruction:\n\n{processed_instr}"
+                    )
+                    conversation.add_user_message(f"Here is the user input: \n\n{text}")
+                    content = run_llm(conversation)
+                    console.print(
+                        f"[bold green]Here is enhanced text:[/bold green]\n\n{content}"
+                    )
+                    # Copy the enhanced text to clipboard
+                    pyperclip.copy(content)
+                    console.print(
+                        "[bold blue]Enhanced text copied to clipboard![/bold blue]"
+                    )
+    else:
+        instruction = user_input(f"\n{brand_emoji} Any specific instruction:").strip()
+        instruction = handle_commands(conversation, instruction)
+        if instruction:
+            content = enhance_text(ctx, instruction, text, conversation)
+            # Copy the enhanced text to clipboard
+            pyperclip.copy(content)
+            console.print("[bold blue]Enhanced text copied to clipboard![/bold blue]")
 
 
 def handle_commands(conversation, instruction) -> str:

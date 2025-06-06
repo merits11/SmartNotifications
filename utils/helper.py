@@ -3,12 +3,15 @@ from __future__ import annotations
 from enum import Enum
 from os import environ
 from pathlib import Path
+import base64
+import mimetypes
 
 
 class ContentLoadType(Enum):
     NORMAL = "normal"
     PRELOAD = "preload"
     FILE = "file"
+    IMAGE = "image"
 
 
 def get_shell_and_rc():
@@ -41,13 +44,29 @@ def sanitize_shell_command(content: str) -> str:
         raise ValueError(f"response is not parsable: {content}")
 
 
-def maybe_load_content(file_path_or_str: str | None) -> tuple[ContentLoadType, str]:
+def maybe_load_content(
+    file_path_or_str: str | None,
+) -> tuple[ContentLoadType, str | dict]:
     if not file_path_or_str:
         return ContentLoadType.NORMAL, ""
 
     if file_path_or_str.startswith("preload:file://"):
         return ContentLoadType.PRELOAD, read_file(file_path_or_str[15:])
     if file_path_or_str.startswith("file://"):
-        return ContentLoadType.FILE, read_file(file_path_or_str[7:])
+        path = file_path_or_str[7:]
+        # Check if it's an image file
+        mime_type, _ = mimetypes.guess_type(path)
+        if mime_type and mime_type.startswith("image/"):
+            # Read image file and encode as base64
+            with open(path, "rb") as img_file:
+                base64_image = base64.b64encode(img_file.read()).decode("utf-8")
+                # Format exactly as OpenAI API expects
+                return ContentLoadType.IMAGE, {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{mime_type};base64,{base64_image}"
+                    },
+                }
+        return ContentLoadType.FILE, read_file(path)
 
     return ContentLoadType.NORMAL, file_path_or_str
