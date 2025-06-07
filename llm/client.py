@@ -6,7 +6,7 @@ from openai import OpenAI
 from portkey_ai import Portkey
 
 from llm.conversation import Conversation
-from utils.config import read_config
+from utils.config import read_config, GLOBAL_VERBOSE
 
 DEFAULT_MODEL = "gpt-4o-mini"
 
@@ -67,7 +67,8 @@ class Client:
 
     def _call_chat_completion(self, model, messages, tools):
         # debug the messages being sent
-        logger.debug(f"Sending messages to API: {json.dumps(messages, indent=2)}")
+        if GLOBAL_VERBOSE:
+            logger.info(f"Sending messages to API: {json.dumps(messages, indent=2)}")
         response = self.client.chat.completions.create(
             model=model, messages=messages, tools=tools
         )

@@ -5,6 +5,8 @@ from typing import Dict
 
 DEFAULT_PROFILE = "default"
 
+GLOBAL_VERBOSE = os.getenv("GLOBAL_VERBOSE", "0") == "1"
+
 
 class SmartConfig:
     current_profile = DEFAULT_PROFILE

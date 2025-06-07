@@ -128,9 +128,9 @@ def chat(ctx, instruction):
             # For images, we need to format the message exactly as OpenAI API expects
             # If the previous message was text, combine them
             if (
-                conversation.messages
-                and conversation.messages[-1]["role"] == "user"
-                and isinstance(conversation.messages[-1]["content"], str)
+                    conversation.messages
+                    and conversation.messages[-1]["role"] == "user"
+                    and isinstance(conversation.messages[-1]["content"], str)
             ):
                 # Combine previous text with image
                 prev_text = conversation.messages[-1]["content"]
@@ -386,7 +386,7 @@ def handle_commands(conversation, instruction) -> str:
     if parts[0] in ["/cp", "/copy"]:
         if len(parts) > 1:
             if parts[1].isdigit() and -len(conversation.messages) <= int(
-                parts[1]
+                    parts[1]
             ) < len(conversation.messages):
                 index = int(parts[1])
                 pyperclip.copy(conversation.messages[index]["content"])
@@ -467,7 +467,7 @@ def handle_commands(conversation, instruction) -> str:
         save_path = Path(os.getenv("HOME")) / "Documents" / "Smart" / "Temp"
         save_path.mkdir(parents=True, exist_ok=True)
         file_path = (
-            save_path / f"{conversation.started_at.strftime('%Y-%m-%d-%H-%M-%S')}.html"
+                save_path / f"{conversation.started_at.strftime('%Y-%m-%d-%H-%M-%S')}.html"
         )
         last_n = 2  # 1 Q/A pair
         if len(parts) > 1:
