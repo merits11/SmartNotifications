@@ -29,9 +29,13 @@ class Conversation:
         self.started_at = datetime.datetime.now()
 
     def add_message(self, role: str, content: MessageContent) -> None:
+        # If content is a dict with a "type" key (e.g. image_url), wrap it in a list per OpenAI API requirements
+        if isinstance(content, dict) and "type" in content:
+            content = [content]
         self.messages.append({"role": role, "content": content})
 
     def add_user_message(self, content: MessageContent):
+        # The add_message method now handles wrapping image block dicts as needed
         self.add_message("user", content)
 
     def add_assistant_message(self, content: MessageContent):

@@ -81,10 +81,9 @@ def chat(ctx, instruction):
     conversation = Conversation()
     conversation.add_system_message(load_system_prompt(ctx, build_generic_prompt()))
 
-    # If there are initial instructions, collect them all first
-    if instruction:
+    def handle_instruction(input_instruction):
         current_content = []
-        for instr in instruction:
+        for instr in input_instruction:
             load_type, processed_instr = maybe_load_content(instr)
             if processed_instr:
                 if load_type == ContentLoadType.IMAGE:
@@ -100,11 +99,9 @@ def chat(ctx, instruction):
                 if load_type == ContentLoadType.PRELOAD:
                     conversation.add_assistant_message("Okay.")
 
-        # Add any remaining content
-        if current_content:
-            # Always wrap image content in an array
-            conversation.add_user_message(current_content)
-
+    # If there are initial instructions, collect them all first
+    if instruction:
+        handle_instruction(instruction)
         # Run LLM streaming if the last message wasn't from assistant
         if conversation.messages[-1]["role"] != "assistant":
             run_llm_streaming(conversation)
@@ -118,36 +115,11 @@ def chat(ctx, instruction):
         instruction = user_input(
             f"\n{brand_emoji} What would you like to chat about? Type /q to quit: "
         )
-        load_type, instruction = maybe_load_content(instruction)
         instruction = handle_commands(conversation, instruction)
         if not instruction:
             continue
-
-        # Add the user instruction to the conversation
-        if load_type == ContentLoadType.IMAGE:
-            # For images, we need to format the message exactly as OpenAI API expects
-            # If the previous message was text, combine them
-            if (
-                    conversation.messages
-                    and conversation.messages[-1]["role"] == "user"
-                    and isinstance(conversation.messages[-1]["content"], str)
-            ):
-                # Combine previous text with image
-                prev_text = conversation.messages[-1]["content"]
-                # Always wrap content in an array
-                new_content = [{"type": "text", "text": prev_text}, instruction]
-                conversation.messages[-1]["content"] = new_content
-            else:
-                conversation.add_user_message([instruction])
-        else:
-            conversation.add_user_message(instruction)
-
-        if load_type == ContentLoadType.PRELOAD:
-            conversation.add_assistant_message("Okay.")
-            console.print("[bold blue]Instruction loaded![/bold blue]")
-        else:
-            # Process the user's instruction with the LLM
-            run_llm_streaming(conversation)
+        handle_instruction([instruction])
+        run_llm_streaming(conversation)
 
 
 @cli.command()

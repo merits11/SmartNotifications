@@ -68,7 +68,7 @@ class Client:
     def _call_chat_completion(self, model, messages, tools):
         # debug the messages being sent
         if GLOBAL_VERBOSE:
-            logger.info(f"Sending messages to API: {json.dumps(messages, indent=2)}")
+            logger.info(f"Request to API: {json.dumps(messages, indent=2)}")
         response = self.client.chat.completions.create(
             model=model, messages=messages, tools=tools
         )
@@ -106,6 +106,9 @@ class Client:
             Each chunk of the response as it becomes available.
         """
         our_model = conversation.model if conversation.model else self.model
+
+        if GLOBAL_VERBOSE:
+            logger.info(f"Streaming to API: {json.dumps(conversation.messages, indent=2)}")
 
         stream = self.client.chat.completions.create(
             model=our_model,
